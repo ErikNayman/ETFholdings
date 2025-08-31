@@ -1,0 +1,26 @@
+name: Update holdings
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 5 * * 1'   # по пн 05:00 UTC
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci || npm i
+      - run: node scripts/update.js
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "Auto-update holdings"
+          git push
