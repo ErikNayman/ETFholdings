@@ -30,7 +30,7 @@
     "ARKK": { "source": "csv", "url": "https://ark-funds.com/wp-content/fundsiteliterature/csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv" },
     "COWZ": { "source": "csv", "url": "https://www.paceretfs.com/usbank/live/fsb0.pacer.x330.COWZ_Holdings.csv" }
    
-    "SMH":  { "source": "csv", "url": "" },
+    "SMH":  { "source": "invesco", "url": "https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/downloads/holdings/" },
     "VTV":  { "source": "csv", "url": "" },
     "IVV":  { "source": "csv", "url": "https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf/1467271812596.ajax?fileType=csv&fileName=IVV_holdings&dataType=fund" },
     "VTI":  { "source": "csv", "url": "" },
@@ -56,9 +56,9 @@
     "CIBR": { "source": "csv", "url": "" },
     "ITA":  { "source": "csv", "url": "" },
     "IBB":  { "source": "csv", "url": "https://www.ishares.com/us/products/239699/ishares-biotechnology-etf/1467271812596.ajax?fileType=csv&fileName=IBB_holdings&dataType=fund" },
-    "GDX":  { "source": "csv", "url": "" },
+    "GDX":  { "source": "invesco", "url": "https://www.vaneck.com/us/en/investments/gold-miners-etf-gdx/downloads/holdings/" },
     "ITB":  { "source": "csv", "url": "https://www.ishares.com/us/products/239512/ishares-us-home-construction-etf/1467271812596.ajax?fileType=csv&fileName=ITB_holdings&dataType=fund" },
-    "NLR":  { "source": "csv", "url": "" },
+    "NLR":  { "source": "invesco", "url": "https://www.vaneck.com/us/en/investments/uranium-nuclear-energy-etf-nlr/downloads/holdings/" }
     "MAGS": { "source": "csv", "url": "" }
   }
 }
