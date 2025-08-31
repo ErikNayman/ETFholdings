@@ -47,8 +47,8 @@
     };
 
     async function loadIndex() {
-      const r = await fetch('./data/_index.json', {cache:'no-cache'});
-      if (!r.ok) throw new Error('Нет файла data/_index.json. Сначала запустите сборку.');
+      const r = await fetch('./data/index.json', {cache:'no-cache'});
+      if (!r.ok) throw new Error('Нет файла data/index.json. Сначала запустите сборку.');
       return r.json();
     }
 
