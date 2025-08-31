@@ -26,7 +26,7 @@ async function main() {
     }
   }
 
-  fs.writeFileSync(path.join(DATA,'_index.json'),
+  fs.writeFileSync(path.join(DATA,'index.json'),
     JSON.stringify({ updatedAt: new Date().toISOString(), tickers: ok }, null, 2));
 }
 
