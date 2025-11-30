@@ -670,6 +670,19 @@
             if (lastData.eps > 0 && finalPE > 0) {
                 exitPrice = lastData.eps * finalPE;
                 irrStream[irrStream.length - 1] += exitPrice;
+                
+                // Add explicit EXIT row for the table
+                tableData.push({
+                    year: N,
+                    phase: 'EXIT',
+                    rps: null, 
+                    margin: null, 
+                    eps: lastData.eps, 
+                    flow: exitPrice, 
+                    payout: null, 
+                    isExit: true,
+                    finalPE: finalPE
+                });
             }
             const pvExit = exitPrice / Math.pow(1 + wacc, N);
             const fv = pvDiv + pvExit;
@@ -747,23 +760,39 @@
 
             data.forEach(row => {
                 const tr = document.createElement('tr');
-                if (row.isExit) tr.className = "bg-indigo-50 font-bold border-t-2 border-indigo-100";
-                else if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
-                else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
                 
-                const usd = n => formatCurrency(n);
-                const pct = n => formatPercent(n);
-                const payoutTxt = row.isExit || row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
+                if (row.isExit) {
+                    tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
+                    // Custom formatting for the requested "EPS x P/E = FLOW" style
+                    // We have 7 columns: Year, Phase, RPS, Margin, EPS, Payout, Flow
+                    tr.innerHTML = `
+                        <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
+                        <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
+                        <td class="px-4 py-2 text-right text-indigo-400" colspan="2"></td>
+                        <td class="px-4 py-2 text-right text-indigo-900">
+                            ${formatCurrency(row.eps)} <span class="text-indigo-500">x ${row.finalPE.toFixed(1)}</span>
+                        </td>
+                        <td class="px-4 py-2 text-right text-indigo-400">=</td>
+                        <td class="px-4 py-2 text-right font-bold text-indigo-700">${formatCurrency(row.flow)}</td>
+                    `;
+                } else {
+                    if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
+                    else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
+                    
+                    const usd = n => formatCurrency(n);
+                    const pct = n => formatPercent(n);
+                    const payoutTxt = row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
 
-                tr.innerHTML = `
-                    <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
-                    <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
-                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.rps)}</td>
-                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : pct(row.margin)}</td>
-                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.eps)}</td>
-                    <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
-                    <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${usd(row.flow)}</td>
-                `;
+                    tr.innerHTML = `
+                        <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
+                        <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.rps)}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : pct(row.margin)}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.eps)}</td>
+                        <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
+                        <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${usd(row.flow)}</td>
+                    `;
+                }
                 tbody.appendChild(tr);
             });
         }
