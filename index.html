@@ -100,7 +100,13 @@
                 <div id="inputs-panel" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 border-l-4 border-l-slate-400 transition-colors duration-500">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="text-sm font-bold text-slate-700 uppercase">1. Параметры Входа</h3>
-                        <span id="company-name" class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Custom</span>
+                        <div class="flex items-center gap-2">
+                            <!-- NEW: RESET BUTTON -->
+                            <button onclick="resetToDefaults()" id="btn-reset" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors hidden" title="Вернуть исходные значения">
+                                ↺ Сброс
+                            </button>
+                            <span id="company-name" class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Custom</span>
+                        </div>
                     </div>
                     
                     <label class="block text-[10px] font-bold text-slate-400 mb-1">ПРОФИЛЬ БИЗНЕСА (АВТО)</label>
@@ -241,7 +247,7 @@
                 <!-- SENSITIVITY MATRIX -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                     <div class="flex justify-between items-end mb-2">
-                        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-widest">Матрица Цены (Fair Value)</h4>
+                        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-widest">Матрица Справедливой Цены (PV Today)</h4>
                         <span class="text-[10px] text-slate-500">Влияние ставки (r) и мультипликатора (P/E)</span>
                     </div>
                     <div class="grid grid-cols-4 gap-1 text-center select-none" id="sens-grid">
@@ -511,7 +517,7 @@
             
             if (GLOBAL_DB[rawTicker]) {
                 const data = GLOBAL_DB[rawTicker];
-                state.currentTicker = rawTicker; 
+                state.currentTicker = rawTicker; // Store loaded ticker
                 
                 document.getElementById('inp-price').value = data.price;
                 document.getElementById('inp-rps').value = data.rps;
@@ -523,6 +529,9 @@
                 const profile = data.profile || detectProfile(data);
                 document.getElementById('theme-selector').value = profile;
                 safeSetText('company-name', data.name || rawTicker);
+
+                // Show Reset Button
+                document.getElementById('btn-reset').classList.remove('hidden');
 
                 // Handle custom N
                 const slider = document.getElementById('slider-years');
@@ -540,7 +549,46 @@
             } else {
                 errorEl.classList.remove('hidden');
                 errorEl.innerText = `Тикер "${rawTicker}" не найден.`;
+                document.getElementById('btn-reset').classList.add('hidden');
             }
+        }
+        
+        // --- RESET INPUTS FUNCTION ---
+        function resetToDefaults() {
+            if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
+            
+            const data = GLOBAL_DB[state.currentTicker];
+            
+            // 1. Reset Input Fields
+            document.getElementById('inp-price').value = data.price;
+            document.getElementById('inp-rps').value = data.rps;
+            document.getElementById('inp-growth').value = data.growth;
+            document.getElementById('inp-forecast-margin').value = data.margin;
+            document.getElementById('inp-wacc').value = data.wacc;
+            document.getElementById('inp-payout').value = data.payout;
+            
+            // 2. Reset Profile
+            const profile = data.profile || detectProfile(data);
+            document.getElementById('theme-selector').value = profile;
+            
+            // 3. Reset Horizon (N)
+            const slider = document.getElementById('slider-years');
+            if (data.n_term && data.n_term > 0) {
+                slider.value = Math.min(Math.max(data.n_term, 5), 35); 
+                state.userSetYears = true;
+            } else {
+                state.userSetYears = false; 
+                // Will be auto-set by setScenario->getScenarioHorizon logic for base
+            }
+            
+            // 4. Visual Feedback & Recalc
+            const panel = document.getElementById('inputs-panel');
+            panel.classList.remove('flash-update');
+            void panel.offsetWidth; // trigger reflow
+            panel.classList.add('flash-update');
+            
+            state.scenario = 'base';
+            setScenario('base');
         }
 
         // --- HELPERS ---
