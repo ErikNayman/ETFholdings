@@ -372,7 +372,7 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // Helper to map loose text to strict keys
+        // --- THEME HELPER (Added back to fix undefined error) ---
         function normalizeTheme(raw) {
             if (!raw) return null;
             const str = String(raw).toLowerCase().trim();
@@ -395,30 +395,42 @@
         }
 
         function processExcelData(data) {
+            const errEl = document.getElementById('upload-error');
             const newDB = {};
             let count = 0;
+            let themeCount = 0;
+
+            if (!data || data.length === 0) {
+                 errEl.innerText = "Файл пуст или данные не найдены.";
+                 errEl.classList.remove('hidden');
+                 return;
+            }
+
+            // Diagnostic: Show keys of first row if failed
+            const firstRowKeys = Object.keys(data[0]).join(', ');
 
             // Flexible column matching
             const findKey = (row, candidates) => Object.keys(row).find(k => candidates.includes(k.toLowerCase().trim()));
 
             data.forEach(row => {
                 // Find column names dynamically
-                const kTicker = findKey(row, ['ticker', 'symbol', 'code']);
-                const kPrice = findKey(row, ['price', 'close', 'price ($)']);
-                const kRPS = findKey(row, ['rps', 'revenue per share', 'sales per share']);
-                const kGrowth = findKey(row, ['growth', 'growth %', 'g']);
-                const kMargin = findKey(row, ['margin', 'net margin', 'margin %']);
-                const kWacc = findKey(row, ['wacc', 'cost of capital', 'r']);
-                const kPayout = findKey(row, ['payout', 'payout ratio']);
-                const kTheme = findKey(row, ['theme', 'profile', 'strategy', 'type']);
+                const kTicker = findKey(row, ['ticker', 'symbol', 'code', 'тикер']);
+                const kPrice = findKey(row, ['price', 'close', 'price ($)', 'цена']);
+                const kRPS = findKey(row, ['rps', 'revenue per share', 'sales per share', 'revenue']);
+                const kGrowth = findKey(row, ['growth', 'growth %', 'g', 'рост']);
+                const kMargin = findKey(row, ['margin', 'net margin', 'margin %', 'маржа']);
+                const kWacc = findKey(row, ['wacc', 'cost of capital', 'r', 'ставка']);
+                const kPayout = findKey(row, ['payout', 'payout ratio', 'дивиденды']);
+                const kTheme = findKey(row, ['theme', 'profile', 'strategy', 'type', 'тема']);
 
                 if (kTicker && kPrice) {
                     const ticker = String(row[kTicker]).trim().toUpperCase();
                     
                     // Try to extract and normalize theme
                     let extractedTheme = null;
-                    if (kTheme) {
+                    if (kTheme && row[kTheme]) {
                         extractedTheme = normalizeTheme(row[kTheme]);
+                        if (extractedTheme) themeCount++;
                     }
 
                     newDB[ticker] = {
@@ -437,11 +449,13 @@
 
             if (count > 0) {
                 GLOBAL_DB = newDB;
-                document.getElementById('db-status').innerText = `Excel (${count} шт.)`;
+                const themeMsg = themeCount > 0 ? `, Темы: ${themeCount}` : '';
+                document.getElementById('db-status').innerText = `Excel (${count}${themeMsg})`;
                 document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
-                alert(`Успешно загружено ${count} компаний! Теперь введите тикер в поиск.`);
+                alert(`Успешно загружено ${count} компаний${themeMsg}! Теперь введите тикер в поиск.`);
             } else {
-                alert("Не удалось найти данные. Проверьте названия колонок: Ticker, Price, RPS, Growth, Margin, WACC.");
+                errEl.innerText = `Не удалось найти данные. Колонки в файле: [${firstRowKeys}]. Ожидались: Ticker, Price...`;
+                errEl.classList.remove('hidden');
             }
         }
 
