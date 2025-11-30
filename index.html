@@ -1,122 +1,1038 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ETF Holdings → Copy-Paste</title>
-  <style>
-    body { font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
-    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    select, button { padding:8px 12px; font: inherit; }
-    table { border-collapse: collapse; margin-top: 12px; width: 100%; max-width: 960px; }
-    th, td { border:1px solid #ddd; padding:8px; text-align:left; }
-    th { background:#f6f6f6; }
-    .muted { color:#666; }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCF Pro: Excel Import</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS (Community Edition from CDNJS for better compatibility) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; }
+        input[type=range]:focus { outline: none; }
+        .chart-container { position: relative; width: 100%; height: 280px; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
+        
+        /* Timeline styling */
+        .timeline-line { position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #e2e8f0; z-index: 0; transform: translateY(-50%); }
+        .timeline-segment { flex: 1; text-align: center; position: relative; padding-top: 20px; }
+        .timeline-dot { width: 12px; height: 12px; border-radius: 50%; background: white; border: 2px solid #64748b; margin: 0 auto; position: relative; z-index: 10; }
+        .timeline-segment.active .timeline-dot { border-color: #3b82f6; background: #eff6ff; }
+        
+        .dur-badge { 
+            position: absolute; top: -12px; left: 50%; transform: translateX(-50%); 
+            font-size: 0.65rem; background: #f1f5f9; padding: 1px 6px; border-radius: 99px; 
+            border: 1px solid #cbd5e1; color: #64748b; font-weight: 600; z-index: 5;
+        }
+
+        @keyframes flash {
+            0% { background-color: #dbeafe; }
+            100% { background-color: white; }
+        }
+        .flash-update {
+            animation: flash 1s ease-out;
+        }
+    </style>
 </head>
-<body>
-  <h1>ETF Holdings → Copy-Paste</h1>
-  <div class="row">
-    <label for="etf">ETF:</label>
-    <select id="etf"></select>
-    <button id="copy">Скопировать таблицу</button>
-    <a id="download" class="muted" href="#" download>Скачать CSV</a>
-    <span id="stamp" class="muted"></span>
-  </div>
+<body class="antialiased">
 
-  <table id="tbl" hidden>
-    <thead><tr><th>Ticker</th><th>Weight</th></tr></thead>
-    <tbody></tbody>
-  </table>
+    <div class="max-w-7xl mx-auto px-4 py-6">
 
-  <p id="msg" class="muted"></p>
+        <header class="mb-6 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Excel Engine</h1>
+                <p class="text-sm text-slate-500">
+                    Загрузите свой Excel (.xlsx) или используйте демо-тикеры.
+                </p>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-400 uppercase">Метрика</div>
+                <div class="text-sm font-bold text-indigo-600">IRR vs Cost of Capital (r)</div>
+            </div>
+        </header>
 
-  <script>
-    const $etf = document.getElementById('etf');
-    const $tbl = document.getElementById('tbl');
-    const $tbody = $tbl.querySelector('tbody');
-    const $copy = document.getElementById('copy');
-    const $dl = document.getElementById('download');
-    const $stamp = document.getElementById('stamp');
-    const $msg = document.getElementById('msg');
+        <div class="grid lg:grid-cols-12 gap-6">
 
-    const fmtPct = (x) => {
-      const n = +x;
-      return Number.isFinite(n) ? (n*100).toFixed(4) + '%' : x;
-    };
+            <div class="lg:col-span-4 space-y-5">
+                
+                <!-- DATA SOURCE PANEL -->
+                <div class="bg-indigo-600 rounded-xl shadow-lg p-4 text-white">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-xs font-bold text-indigo-200 uppercase tracking-wider">Источник данных</label>
+                        <span id="db-status" class="text-[10px] bg-indigo-500 px-2 py-0.5 rounded text-indigo-100">Демо База</span>
+                    </div>
 
-    async function loadIndex() {
-      const r = await fetch('./data/index.json', {cache:'no-cache'});
-      if (!r.ok) throw new Error('Нет файла data/index.json. Сначала запустите сборку.');
-      return r.json();
-    }
+                    <!-- Excel Upload -->
+                    <div class="mb-4 relative group">
+                        <label for="excel-upload" class="flex items-center justify-center w-full px-4 py-2 bg-indigo-500 hover:bg-indigo-400 border border-indigo-400 border-dashed rounded cursor-pointer transition-colors text-xs font-bold uppercase select-none">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            Загрузить Excel (.xlsx)
+                        </label>
+                        <input id="excel-upload" type="file" accept=".xlsx, .xls" class="hidden" onchange="handleExcelUpload(event)">
+                        
+                        <!-- Tooltip with instructions -->
+                        <div class="hidden group-hover:block absolute top-full left-0 w-full bg-slate-800 text-slate-200 text-[10px] p-3 rounded mt-1 z-20 shadow-xl border border-slate-600 leading-relaxed">
+                            <strong>Нужные колонки:</strong><br>
+                            Ticker, Price, RPS, Growth, Margin, WACC, Payout<br>
+                            <em class="text-slate-400">Опционально: Theme</em>
+                        </div>
+                    </div>
 
-    async function loadCSV(ticker) {
-      const url = `./data/${ticker.toUpperCase()}.csv`;
-      const r = await fetch(url, {cache:'no-cache'});
-      if (!r.ok) throw new Error(`Нет файла ${url}. Проверьте конфиг/сборку.`);
-      const text = await r.text();
-      return Papa.parse(text.trim(), { header: true }).data;
-    }
+                    <div id="upload-error" class="text-xs bg-red-500 text-white p-2 rounded mb-2 hidden"></div>
 
-    function render(rows) {
-      $tbody.innerHTML = '';
-      rows.forEach(r => {
-        const tr = document.createElement('tr');
-        const td1 = document.createElement('td');
-        const td2 = document.createElement('td');
-        td1.textContent = r.Ticker ?? r.ticker ?? '';
-        td2.textContent = fmtPct(r.Weight ?? r.weight);
-        tr.append(td1, td2);
-        $tbody.appendChild(tr);
-      });
-      $tbl.hidden = rows.length === 0;
-      $msg.textContent = rows.length ? `Всего: ${rows.length}` : 'Пусто';
-    }
+                    <!-- Search -->
+                    <div class="flex gap-2">
+                        <input type="text" id="inp-ticker" placeholder="TICKER (e.g. AAPL)" class="w-full bg-indigo-700 border border-indigo-500 text-white placeholder-indigo-300 rounded px-3 py-2 font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white">
+                        <button onclick="loadTicker()" class="bg-white text-indigo-600 px-4 py-2 rounded font-bold hover:bg-indigo-50 transition-colors">Go</button>
+                    </div>
+                    <div id="ticker-error" class="text-xs text-red-300 mt-2 hidden">Тикер не найден в загруженной базе</div>
+                </div>
 
-    function copyTable() {
-      const rows = [['Ticker','Weight']];
-      for (const tr of $tbody.querySelectorAll('tr')) {
-        rows.push([
-          tr.children[0].textContent,
-          tr.children[1].textContent
-        ]);
-      }
-      const tsv = rows.map(r => r.join('\t')).join('\n');
-      navigator.clipboard.writeText(tsv).then(()=>{
-        $msg.textContent = 'Скопировано в буфер как TSV — вставляйте в Google Sheets.';
-      });
-    }
+                <div id="inputs-panel" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 border-l-4 border-l-slate-400 transition-colors duration-500">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-700 uppercase">1. Параметры Входа</h3>
+                        <span id="company-name" class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Custom</span>
+                    </div>
+                    
+                    <label class="block text-[10px] font-bold text-slate-400 mb-1">ПРОФИЛЬ БИЗНЕСА (АВТО)</label>
+                    <select id="theme-selector" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 font-medium mb-3">
+                        <option value="Rocket">Rocket Growth (Startups)</option>
+                        <option value="Expansion">Expansion Compounder (NVDA)</option>
+                        <option value="Momentum">Quality Momentum (AAPL)</option>
+                        <option value="Steady">Steady Compounder (WMT)</option>
+                        <option value="Dividend">Dividend Stability (JPM)</option>
+                        <option value="Fallen">Fallen Angel (PYPL)</option>
+                        <option value="DeepValue">Deep Value (GM)</option>
+                    </select>
 
-    loadIndex().then(idx => {
-      idx.tickers.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
-        $etf.appendChild(opt);
-      });
-      $stamp.textContent = idx.updatedAt ? 'Обновлено: ' + new Date(idx.updatedAt).toLocaleString() : '';
-      if (idx.tickers.length) {
-        $etf.value = idx.tickers[0];
-        $etf.dispatchEvent(new Event('change'));
-      }
-    }).catch(e => { $msg.textContent = e.message; });
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-xs font-bold text-slate-700">Цена Акции ($)</label>
+                            <input type="number" id="inp-price" class="w-full border-2 border-blue-100 p-2 rounded font-bold text-blue-800 text-lg" value="150">
+                        </div>
 
-    $etf.addEventListener('change', async () => {
-      const t = $etf.value;
-      try {
-        const rows = await loadCSV(t);
-        render(rows);
-        $dl.href = `./data/${t}.csv`;
-        $dl.download = `${t}.csv`;
-      } catch (e) {
-        $msg.textContent = e.message;
-        render([]);
-        $dl.removeAttribute('href');
-      }
-    });
+                        <div>
+                            <label class="block text-xs text-slate-400">RPS ($)</label>
+                            <input type="number" id="inp-rps" class="w-full border p-1 rounded" value="20">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400">Рост (%)</label>
+                            <input type="number" id="inp-growth" class="w-full border p-1 rounded font-bold text-green-600" value="10">
+                        </div>
+                        
+                        <div class="col-span-2 bg-yellow-50 p-2 rounded border border-yellow-100">
+                            <label class="block text-xs font-bold text-yellow-800">Прогноз Маржи (2025-27)</label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="inp-forecast-margin" class="w-full bg-white border p-1 rounded font-bold text-slate-700" value="15.0">
+                                <span class="text-xs text-slate-500">%</span>
+                            </div>
+                        </div>
 
-    $copy.addEventListener('click', copyTable);
-  </script>
+                        <div>
+                            <label class="block text-xs text-slate-400">Стоимость капитала (r, %)</label>
+                            <input type="number" id="inp-wacc" class="w-full border p-1 rounded" value="8" step="0.1">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 font-bold text-purple-600">Нач. Payout (%)</label>
+                            <input type="number" id="inp-payout" class="w-full border-2 border-purple-100 p-1 rounded font-bold text-purple-700" value="30">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-4 ring-1 ring-slate-200">
+                    <h3 class="text-sm font-bold text-slate-700 uppercase mb-3">2. Сценарный Двигатель</h3>
+                    
+                    <div class="flex space-x-2 mb-6">
+                        <button onclick="setScenario('pessimistic')" id="btn-pessimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-red-50 transition-all font-medium text-slate-600">Пессимизм</button>
+                        <button onclick="setScenario('base')" id="btn-base" class="flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md transition-all font-bold">Базовый</button>
+                        <button onclick="setScenario('optimistic')" id="btn-optimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-green-50 transition-all font-medium text-slate-600">Оптимизм</button>
+                    </div>
+
+                    <div class="relative flex items-center justify-between mb-2 px-1">
+                        <div class="timeline-line"></div>
+                        <div class="timeline-segment">
+                            <div class="dur-badge bg-yellow-100 text-yellow-700 border-yellow-200" id="badge-analyst">2 г.</div>
+                            <div class="timeline-dot border-yellow-500 bg-yellow-50"></div>
+                            <div class="mt-2 text-[9px] font-bold text-slate-600 uppercase leading-tight">Прогноз</div>
+                        </div>
+                        <div class="timeline-segment active">
+                            <div class="dur-badge" id="badge-d1">--</div>
+                            <div class="timeline-dot"></div>
+                            <div class="mt-2 text-[9px] font-bold text-indigo-600 uppercase leading-tight truncate px-1" id="lbl-p1">--</div>
+                            <div class="text-[8px] text-slate-400" id="pay-p1">Pay: --%</div>
+                        </div>
+                        <div class="timeline-segment active">
+                            <div class="dur-badge" id="badge-d2">--</div>
+                            <div class="timeline-dot"></div>
+                            <div class="mt-2 text-[9px] font-bold text-indigo-600 uppercase leading-tight truncate px-1" id="lbl-p2">--</div>
+                            <div class="text-[8px] text-slate-400" id="pay-p2">Pay: --%</div>
+                        </div>
+                        <div class="timeline-segment active">
+                            <div class="dur-badge" id="badge-d3">--</div>
+                            <div class="timeline-dot border-green-500 bg-green-50"></div>
+                            <div class="mt-2 text-[9px] font-bold text-green-700 uppercase leading-tight truncate px-1" id="lbl-p3">--</div>
+                            <div class="text-[8px] text-slate-400" id="pay-p3">Pay: --%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 mb-2">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-bold text-slate-500">Общий горизонт (N)</label>
+                            <span id="disp-years" class="text-xs font-bold text-blue-600">-- лет</span>
+                        </div>
+                        <input type="range" id="slider-years" min="5" max="35" step="1" class="w-full h-1.5 bg-slate-200 rounded-lg accent-blue-600">
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 rounded-xl p-5 text-white shadow-xl">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">IRR (Прогноз)</h4>
+                            <div class="text-5xl font-bold tracking-tight" id="res-irr">--%</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-400 uppercase">Upside</div>
+                            <div id="res-upside" class="text-xl font-bold text-green-400">--%</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-700/50 rounded-lg p-3 border border-slate-600 flex justify-between items-center">
+                        <div>
+                            <div class="text-[10px] text-slate-400">Стоимость капитала r</div>
+                            <div class="font-mono font-bold text-red-300" id="res-wacc-display">--%</div>
+                        </div>
+                        <div class="text-xl text-slate-500">➔</div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-400">Alpha (Сверхдоходность)</div>
+                            <div class="font-mono font-bold text-xl" id="res-alpha">--%</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 bg-slate-700/50 rounded-lg p-3 border border-slate-600">
+                        <div class="flex justify-between items-end mb-2">
+                            <h4 class="text-[10px] text-slate-400 uppercase tracking-widest">Матрица Цены (Fair Value)</h4>
+                            <span class="text-[9px] text-slate-500">WACC (Вертик) vs P/E (Гориз)</span>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1 text-center select-none" id="sens-grid">
+                            <!-- JS Generated -->
+                        </div>
+                    </div>
+
+                    <div class="mt-3 pt-2 border-t border-slate-600 text-[10px] text-slate-400 flex justify-between">
+                        <span>Fair Value: <span id="res-fv" class="text-white font-bold">$---</span></span>
+                        <span>Exit P/E: <span id="res-exit-pe" class="text-white font-bold">--x</span></span>
+                    </div>
+                    <div class="mt-1 text-[10px] text-slate-400 flex justify-between">
+                        <span>PV дивидендов: <span id="res-pv-div" class="text-white font-bold">$---</span></span>
+                        <span>PV экзита: <span id="res-pv-exit" class="text-white font-bold">$---</span></span>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="lg:col-span-8 space-y-6">
+                
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-700">Траектория Денежных Потоков</h3>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="chk-log" class="rounded text-blue-600 focus:ring-blue-500">
+                            <label for="chk-log" class="text-xs text-slate-600 cursor-pointer">Log Scale</label>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="cfChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex justify-between">
+                        <h3 class="text-sm font-bold text-slate-700">Детализация Расчета</h3>
+                        <span class="text-xs text-slate-400">Номинальные значения ($)</span>
+                    </div>
+                    <div class="overflow-x-auto custom-scroll" style="max-height: 350px;">
+                        <table class="w-full text-sm text-left">
+                            <thead class="text-xs text-slate-500 uppercase bg-white sticky top-0 border-b">
+                                <tr>
+                                    <th class="px-4 py-2">Год</th>
+                                    <th class="px-4 py-2">Фаза</th>
+                                    <th class="px-4 py-2 text-right">RPS</th>
+                                    <th class="px-4 py-2 text-right">Маржа</th>
+                                    <th class="px-4 py-2 text-right">EPS</th>
+                                    <th class="px-4 py-2 text-right text-purple-600">Payout</th>
+                                    <th class="px-4 py-2 text-right font-bold text-blue-600">Flow</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const CONFIG = {
+            ANALYST_YEARS: 2,
+            DEFAULT_WACC: 0.08,
+            IRR_MAX_ITER: 1000,
+            IRR_TOL: 1e-6,
+            IRR_MIN_RATE: -0.99,
+            IRR_MAX_RATE: 5
+        };
+
+        const THEME_ORDER = ['Rocket', 'Expansion', 'Momentum', 'Steady', 'Dividend', 'DeepValue'];
+        
+        // --- DEMO DATABASE ---
+        const DEMO_DB = {
+            'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15 },
+            'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2 },
+            'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0 },
+            'MSFT': { name: 'Microsoft', price: 420.0, rps: 31.5, growth: 12.0, margin: 36.0, wacc: 8.0, payout: 25 },
+            'AMZN': { name: 'Amazon', price: 178.0, rps: 55.0, growth: 11.0, margin: 6.5, wacc: 9.0, payout: 0 },
+            'GOOGL': { name: 'Alphabet', price: 173.0, rps: 24.0, growth: 10.0, margin: 24.0, wacc: 8.5, payout: 10 }
+        };
+
+        // Current Active DB (defaults to Demo)
+        let GLOBAL_DB = { ...DEMO_DB };
+
+        const METRICS = {
+            'Rocket':    { name: 'Rocket',    growth: 40,    margin: 5,    pe: 75,  payout: 0,  N: 20 }, 
+            'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.7, pe: 24.3, payout: 15, N: 15 }, 
+            'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 27.8, pe: 22.7, payout: 50, N: 12 }, 
+            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12 }, 
+            'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8, pe: 13.9, payout: 75, N: 9 },
+            'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.3, pe: 10.9, payout: 50, N: 6 },
+            'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 6.5,  pe: 11.8, payout: 30, N: 9 } 
+        };
+
+        const BASE_CHAINS = {
+            'Rocket':    ['Rocket', 'Expansion', 'Momentum'],
+            'Expansion': ['Expansion', 'Momentum', 'Steady'],
+            'Momentum':  ['Momentum', 'Steady', 'Dividend'],
+            'Steady':    ['Steady', 'Dividend', 'DeepValue'],
+            'Dividend':  ['Dividend', 'DeepValue', 'DeepValue'],
+            'Fallen':    ['Fallen', 'DeepValue', 'Steady'],
+            'DeepValue': ['DeepValue', 'Steady', 'Dividend']
+        };
+
+        const EDGE_MODS = {
+            rocket_opt: { pe: 1.25, margin: 1.2, growth: 1.1 },
+            deep_pess:  { pe: 0.8,  margin: 0.8, growth: 0.8 }
+        };
+
+        let state = { scenario: 'base', charts: {}, userSetYears: false };
+
+        // --- EXCEL LOGIC ---
+        function handleExcelUpload(e) {
+            const errEl = document.getElementById('upload-error');
+            errEl.classList.add('hidden');
+            
+            // Safety check for library
+            if (typeof XLSX === 'undefined') {
+                errEl.innerText = "Ошибка: Библиотека Excel не загрузилась. Проверьте интернет или откройте файл локально.";
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    processExcelData(jsonData);
+                } catch (err) {
+                    console.error(err);
+                    errEl.innerText = "Ошибка чтения файла. Убедитесь, что это корректный .xlsx";
+                    errEl.classList.remove('hidden');
+                }
+            };
+            reader.onerror = function() {
+                errEl.innerText = "Браузер заблокировал чтение файла. Сохраните HTML на диск и откройте его.";
+                errEl.classList.remove('hidden');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Helper to map loose text to strict keys
+        function normalizeTheme(raw) {
+            if (!raw) return null;
+            const str = String(raw).toLowerCase().trim();
+            
+            // Direct mapping attempt
+            const keys = Object.keys(METRICS);
+            const exact = keys.find(k => k.toLowerCase() === str);
+            if (exact) return exact;
+
+            // Fuzzy mapping
+            if (str.includes('rocket') || str.includes('start')) return 'Rocket';
+            if (str.includes('expansion') || str.includes('nvda')) return 'Expansion';
+            if (str.includes('momentum') || str.includes('quality')) return 'Momentum';
+            if (str.includes('steady') || str.includes('compounder') || str.includes('stable')) return 'Steady';
+            if (str.includes('dividend') || str.includes('yield') || str.includes('income')) return 'Dividend';
+            if (str.includes('deep') || str.includes('value')) return 'DeepValue';
+            if (str.includes('fallen') || str.includes('angel') || str.includes('turnaround')) return 'Fallen';
+            
+            return null;
+        }
+
+        function processExcelData(data) {
+            const newDB = {};
+            let count = 0;
+
+            // Flexible column matching
+            const findKey = (row, candidates) => Object.keys(row).find(k => candidates.includes(k.toLowerCase().trim()));
+
+            data.forEach(row => {
+                // Find column names dynamically
+                const kTicker = findKey(row, ['ticker', 'symbol', 'code']);
+                const kPrice = findKey(row, ['price', 'close', 'price ($)']);
+                const kRPS = findKey(row, ['rps', 'revenue per share', 'sales per share']);
+                const kGrowth = findKey(row, ['growth', 'growth %', 'g']);
+                const kMargin = findKey(row, ['margin', 'net margin', 'margin %']);
+                const kWacc = findKey(row, ['wacc', 'cost of capital', 'r']);
+                const kPayout = findKey(row, ['payout', 'payout ratio']);
+                const kTheme = findKey(row, ['theme', 'profile', 'strategy', 'type']);
+
+                if (kTicker && kPrice) {
+                    const ticker = String(row[kTicker]).trim().toUpperCase();
+                    
+                    // Try to extract and normalize theme
+                    let extractedTheme = null;
+                    if (kTheme) {
+                        extractedTheme = normalizeTheme(row[kTheme]);
+                    }
+
+                    newDB[ticker] = {
+                        name: ticker + ' (Excel)',
+                        price: parseFloat(row[kPrice]) || 0,
+                        rps: parseFloat(row[kRPS]) || 10,
+                        growth: parseFloat(row[kGrowth]) || 5,
+                        margin: parseFloat(row[kMargin]) || 10,
+                        wacc: parseFloat(row[kWacc]) || 8,
+                        payout: parseFloat(row[kPayout]) || 0,
+                        profile: extractedTheme // Can be null, will fallback to auto-detect
+                    };
+                    count++;
+                }
+            });
+
+            if (count > 0) {
+                GLOBAL_DB = newDB;
+                document.getElementById('db-status').innerText = `Excel (${count} шт.)`;
+                document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
+                alert(`Успешно загружено ${count} компаний! Теперь введите тикер в поиск.`);
+            } else {
+                alert("Не удалось найти данные. Проверьте названия колонок: Ticker, Price, RPS, Growth, Margin, WACC.");
+            }
+        }
+
+        // --- AUTO-PROFILE LOGIC ---
+        function detectProfile(data) {
+            // Simple heuristic to guess profile based on data
+            const g = data.growth;
+            const m = data.margin;
+            const p = data.payout;
+
+            if (g > 30) return 'Rocket';
+            if (g > 15 && m > 20) return 'Expansion';
+            if (g > 10 && m > 15 && p > 10) return 'Momentum';
+            if (p > 60) return 'Dividend';
+            if (g < 5 && p > 0) return 'DeepValue';
+            if (g > 15 && m < 10) return 'Fallen'; // High growth but low margin recovery
+            
+            return 'Steady'; // Default
+        }
+
+        // --- TICKER LOGIC ---
+        function loadTicker() {
+            const inputEl = document.getElementById('inp-ticker');
+            const errorEl = document.getElementById('ticker-error');
+            const panelEl = document.getElementById('inputs-panel');
+            const rawTicker = inputEl.value.trim().toUpperCase();
+
+            // Reset UI
+            errorEl.classList.add('hidden');
+            
+            // Lookup in GLOBAL_DB
+            if (GLOBAL_DB[rawTicker]) {
+                const data = GLOBAL_DB[rawTicker];
+                
+                // Populate Inputs
+                document.getElementById('inp-price').value = data.price;
+                document.getElementById('inp-rps').value = data.rps;
+                document.getElementById('inp-growth').value = data.growth;
+                document.getElementById('inp-forecast-margin').value = data.margin;
+                document.getElementById('inp-wacc').value = data.wacc;
+                document.getElementById('inp-payout').value = data.payout;
+                
+                // Determine Profile if not in DB, else guess
+                const profile = data.profile || detectProfile(data);
+                document.getElementById('theme-selector').value = profile;
+                safeSetText('company-name', data.name || rawTicker);
+
+                // Visual Feedback
+                panelEl.classList.add('flash-update');
+                setTimeout(() => panelEl.classList.remove('flash-update'), 1000);
+
+                // Recalculate
+                state.scenario = 'base'; // reset to base
+                setScenario('base'); 
+            } else {
+                errorEl.classList.remove('hidden');
+                errorEl.innerText = `Тикер "${rawTicker}" не найден.`;
+            }
+        }
+
+        // --- HELPERS ---
+        function safeSetText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        }
+
+        function formatCurrency(n) {
+            if (n == null || !isFinite(n)) return '$---';
+            return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+        }
+
+        function formatPercent(n) {
+            if (n == null || !isFinite(n)) return '--%';
+            return n.toFixed(1) + '%';
+        }
+
+        function clamp(v, min, max) {
+            return Math.min(max, Math.max(min, v));
+        }
+
+        // --- SCENARIO PARAMS ---
+        function getCalcParams(selected, scenario) {
+            let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: [] };
+            let startKey = selected;
+            
+            if (selected === 'Rocket' && scenario === 'optimistic') {
+                res.mods = EDGE_MODS.rocket_opt; 
+            } else if (selected === 'DeepValue' && scenario === 'pessimistic') {
+                res.mods = EDGE_MODS.deep_pess; 
+            } else if (selected === 'Fallen') {
+                if (scenario === 'optimistic') startKey = 'Expansion';
+                if (scenario === 'pessimistic') startKey = 'DeepValue';
+            } else if (scenario === 'optimistic') {
+                const idx = THEME_ORDER.indexOf(selected);
+                if (idx > 0) startKey = THEME_ORDER[idx - 1];
+            } else if (scenario === 'pessimistic') {
+                const idx = THEME_ORDER.indexOf(selected);
+                if (idx < THEME_ORDER.length - 1) startKey = THEME_ORDER[idx + 1];
+            }
+
+            res.themeKey = startKey;
+            res.chain = BASE_CHAINS[startKey] || ['Steady', 'Dividend', 'DeepValue'];
+            return res;
+        }
+
+        // --- IRR ENGINE ---
+        function npvAtRate(values, rate) {
+            let npv = 0;
+            const onePlus = 1 + rate;
+            if (onePlus <= 0) return NaN;
+            for (let j = 0; j < values.length; j++) {
+                npv += values[j] / Math.pow(onePlus, j);
+            }
+            return npv;
+        }
+
+        function calculateIRR(values) {
+            const hasPos = values.some(v => v > 0);
+            const hasNeg = values.some(v => v < 0);
+            if (!hasPos || !hasNeg) return null; 
+
+            const maxIter = CONFIG.IRR_MAX_ITER;
+            const tol = CONFIG.IRR_TOL;
+            let rate = 0.1;
+
+            // Newton-Raphson
+            for (let i = 0; i < maxIter; i++) {
+                let npv = 0, d_npv = 0;
+                const onePlus = 1 + rate;
+                if (onePlus <= 0) break;
+
+                for (let j = 0; j < values.length; j++) {
+                    const div = Math.pow(onePlus, j);
+                    npv += values[j] / div;
+                    d_npv -= (j * values[j]) / (div * onePlus);
+                }
+
+                if (Math.abs(npv) < tol) return rate;
+                if (d_npv === 0 || !isFinite(d_npv)) break;
+
+                const newRate = rate - (npv / d_npv);
+                if (!isFinite(newRate)) break;
+                if (Math.abs(newRate - rate) < tol) return newRate;
+                rate = newRate;
+                if (rate < CONFIG.IRR_MIN_RATE || rate > CONFIG.IRR_MAX_RATE) break;
+            }
+
+            // Fallback: Binary Search
+            let low = CONFIG.IRR_MIN_RATE;
+            let high = CONFIG.IRR_MAX_RATE;
+            let npvLow = npvAtRate(values, low);
+            let npvHigh = npvAtRate(values, high);
+
+            if (!isFinite(npvLow) || !isFinite(npvHigh) || npvLow * npvHigh > 0) return null;
+
+            for (let i = 0; i < maxIter; i++) {
+                const mid = (low + high) / 2;
+                const npvMid = npvAtRate(values, mid);
+                if (!isFinite(npvMid)) return null;
+                if (Math.abs(npvMid) < tol || (high - low) / 2 < tol) return mid;
+                if (npvLow * npvMid <= 0) { high = mid; npvHigh = npvMid; } 
+                else { low = mid; npvLow = npvMid; }
+            }
+            return null;
+        }
+
+        // --- CORE DCF ENGINE ---
+        function runDCFModel(inputs, userThemeKey, scenario, overrides = {}) {
+            const {
+                startPrice, startRPS, startGrowth, forecastMargin, wacc, startPayout, N
+            } = inputs;
+
+            const params = getCalcParams(userThemeKey, scenario);
+            const mods = params.mods;
+            const chainKeys = params.chain;
+
+            const t1 = METRICS[chainKeys[0]];
+            const t2 = METRICS[chainKeys[1]];
+            const t3 = METRICS[chainKeys[2]];
+
+            const ANALYST_YEARS = CONFIG.ANALYST_YEARS;
+            const modelYears = Math.max(1, N - ANALYST_YEARS);
+            
+            let p1_dur = Math.floor(modelYears / 3);
+            let p2_dur = Math.floor(modelYears / 3);
+            let p3_dur = modelYears - p1_dur - p2_dur;
+            if (p1_dur < 0) p1_dur = 0; if (p2_dur < 0) p2_dur = 0; if (p3_dur < 0) p3_dur = 0;
+
+            const y_p1_end = ANALYST_YEARS + p1_dur;
+            const y_p2_end = y_p1_end + p2_dur;
+
+            const basePE = t3.pe * mods.pe;
+            const finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
+
+            let m1 = t1.margin * mods.margin;
+            let m2 = t2.margin * mods.margin;
+            let m3 = t3.margin * mods.margin;
+
+            if (params.themeKey !== 'Rocket') {
+                m1 = Math.min(forecastMargin, m1);
+                m2 = Math.min(forecastMargin, m2);
+                m3 = Math.min(forecastMargin, m3);
+            }
+
+            const g1 = t1.growth * mods.growth;
+            const g2 = t2.growth * mods.growth;
+            const g3 = t3.growth * mods.growth;
+
+            let rps = startRPS;
+            let pvDiv = 0;
+            let pvExit = 0;
+            let irrStream = [-startPrice];
+            let tableData = [];
+
+            // Year 0
+            const eps0 = startRPS * (forecastMargin / 100);
+            tableData.push({
+                year: 0, phase: 'Start', rps: startRPS, margin: forecastMargin, eps: eps0, flow: -startPrice, payout: startPayout, isExit: false
+            });
+
+            for (let i = 1; i <= N; i++) {
+                let g, m, pay;
+                let phaseLabel = "Analyst";
+
+                if (i <= ANALYST_YEARS) {
+                    g = startGrowth;
+                    m = forecastMargin;
+                    pay = startPayout;
+                } else {
+                    let progress = 0;
+                    if (i <= y_p1_end && p1_dur > 0) {
+                        phaseLabel = "Phase 1";
+                        progress = clamp((i - ANALYST_YEARS - 1) / p1_dur, 0, 1);
+                        g = startGrowth - (startGrowth - g1) * progress;
+                        m = forecastMargin - (forecastMargin - m1) * progress;
+                        pay = startPayout - (startPayout - t1.payout) * progress;
+                    } else if (i <= y_p2_end && p2_dur > 0) {
+                        phaseLabel = "Phase 2";
+                        progress = clamp((i - y_p1_end - 1) / p2_dur, 0, 1);
+                        g = g1 - (g1 - g2) * progress;
+                        m = m1 - (m1 - m2) * progress;
+                        pay = t1.payout - (t1.payout - t2.payout) * progress;
+                    } else {
+                        phaseLabel = "Phase 3";
+                        progress = clamp((i - y_p2_end - 1) / Math.max(1, p3_dur), 0, 1);
+                        g = g2 - (g2 - g3) * progress;
+                        m = m2 - (m2 - m3) * progress;
+                        pay = t2.payout - (t2.payout - t3.payout) * progress;
+                    }
+                }
+
+                if (pay > 100) pay = 100; if (pay < 0) pay = 0;
+
+                rps = rps * (1 + g / 100);
+                let eps = rps * (m / 100);
+                let div = (eps > 0 ? eps : 0) * (pay / 100);
+
+                pvDiv += div / Math.pow(1 + wacc, i);
+                irrStream.push(div);
+                tableData.push({
+                    year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false
+                });
+            }
+
+            // Exit
+            const lastData = tableData[tableData.length - 1];
+            let exitPrice = 0;
+            let exitValid = (lastData.eps > 0 && finalPE > 0);
+
+            if (exitValid) {
+                exitPrice = lastData.eps * finalPE;
+                irrStream[irrStream.length - 1] += exitPrice;
+                pvExit = exitPrice / Math.pow(1 + wacc, N);
+
+                tableData.push({
+                    year: N, phase: 'EXIT', rps: lastData.rps, margin: lastData.margin, eps: lastData.eps, flow: exitPrice, isExit: true, payout: 0
+                });
+            }
+
+            const fv = pvDiv + pvExit;
+            const irr = calculateIRR(irrStream);
+
+            let upside = null;
+            if (startPrice > 0 && isFinite(fv)) upside = ((fv - startPrice) / startPrice) * 100;
+
+            let spread = null;
+            if (irr != null) spread = (irr - wacc) * 100;
+
+            return {
+                tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE,
+                meta: { 
+                    N, chainKeys,
+                    phases: { 
+                        p1: { name: t1.name, payout: t1.payout, dur: p1_dur },
+                        p2: { name: t2.name, payout: t2.payout, dur: p2_dur },
+                        p3: { name: t3.name, payout: t3.payout, dur: p3_dur }
+                    },
+                    exitValid
+                }
+            };
+        }
+
+        // --- RENDERING ---
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                if (row.isExit) tr.className = "bg-indigo-50 font-bold border-t-2 border-indigo-100";
+                else if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
+                else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
+                
+                const usd = n => formatCurrency(n);
+                const pct = n => formatPercent(n);
+                const payoutTxt = row.isExit || row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
+
+                tr.innerHTML = `
+                    <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
+                    <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
+                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.rps)}</td>
+                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : pct(row.margin)}</td>
+                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.eps)}</td>
+                    <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
+                    <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${usd(row.flow)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderSensitivity(baseResult, baseInputs, theme, scenario) {
+            const gridEl = document.getElementById('sens-grid');
+            if (!gridEl) return;
+            gridEl.innerHTML = '';
+
+            const waccStep = 0.01; // 1%
+            const peStep = 1.0;    // 1.0x
+            const currentPE = baseResult.finalPE;
+            const currentWACC = baseResult.wacc;
+
+            // Headers (P/E)
+            const peLabels = [
+                { label: 'r \\ PE', class: 'text-slate-500' },
+                { label: '-1.0x', val: currentPE - peStep },
+                { label: 'Base',  val: currentPE },
+                { label: '+1.0x', val: currentPE + peStep }
+            ];
+
+            peLabels.forEach((h, i) => {
+                const div = document.createElement('div');
+                div.className = "text-[10px] font-bold pb-1 " + (i===0 ? h.class : (i===2 ? "text-blue-400" : "text-slate-400"));
+                div.innerText = h.label;
+                gridEl.appendChild(div);
+            });
+
+            // Rows (WACC: High to Low because High WACC = Low Price)
+            const waccRows = [
+                { label: '+1.0%', val: currentWACC + waccStep },
+                { label: 'Base',  val: currentWACC },
+                { label: '-1.0%', val: currentWACC - waccStep }
+            ];
+
+            waccRows.forEach(row => {
+                // Header
+                const rowHeader = document.createElement('div');
+                rowHeader.className = "text-[10px] font-bold my-auto text-left pl-1 " + (row.label==='Base' ? "text-blue-400" : "text-slate-500");
+                rowHeader.innerText = row.label;
+                gridEl.appendChild(rowHeader);
+
+                // Cells
+                peLabels.slice(1).forEach(col => {
+                    const simInputs = { ...baseInputs, wacc: row.val };
+                    // Run logic with override
+                    const simResult = runDCFModel(simInputs, theme, scenario, { finalPE: col.val });
+                    
+                    const cell = document.createElement('div');
+                    const fv = simResult.fv;
+                    
+                    const isBase = (row.label === 'Base' && col.label === 'Base');
+                    let colorClass = "bg-slate-700 text-slate-300";
+                    
+                    if (isBase) {
+                        colorClass = "bg-blue-600 text-white font-bold border border-blue-400 transform scale-105 shadow-lg z-10";
+                    } else {
+                        const change = (fv - baseResult.fv) / (baseResult.fv || 1);
+                        if (change > 0.05) colorClass = "bg-green-900/40 text-green-300";
+                        else if (change < -0.05) colorClass = "bg-red-900/40 text-red-300";
+                    }
+
+                    cell.className = `text-[11px] font-mono py-1 rounded-sm cursor-default flex items-center justify-center ${colorClass}`;
+                    cell.innerText = '$' + fv.toLocaleString('en-US', {maximumFractionDigits: 0});
+                    gridEl.appendChild(cell);
+                });
+            });
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('cfChart');
+            if (!ctx) return;
+            state.charts.cf = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        y: { 
+                            title: { display:true, text: 'Flow ($)' },
+                            ticks: { callback: function(value) { return '$' + value.toLocaleString(); } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(stream) {
+            if (!state.charts.cf) return;
+            const labels = stream.map((_, i) => i === 0 ? 'Start' : `Y${i}`);
+            const colors = stream.map((v, i) => {
+                if (i === 0) return '#ef4444';
+                if (i === stream.length - 1) return '#4f46e5'; 
+                if (i <= 2) return '#f59e0b'; 
+                return '#3b82f6';
+            });
+
+            const logCheckbox = document.getElementById('chk-log');
+            let useLog = logCheckbox && logCheckbox.checked;
+            const hasNonPositive = stream.some(v => v <= 0);
+
+            if (useLog && hasNonPositive) {
+                useLog = false;
+                if (logCheckbox) logCheckbox.checked = false;
+            }
+
+            state.charts.cf.options.scales.y.type = useLog ? 'logarithmic' : 'linear';
+            state.charts.cf.data.labels = labels;
+            state.charts.cf.data.datasets = [{ label: 'Flow', data: stream, backgroundColor: colors }];
+            state.charts.cf.update();
+        }
+
+        function renderTimeline(meta) {
+            const { phases, chainKeys } = meta;
+            safeSetText('badge-d1', phases.p1.dur + ' г.');
+            safeSetText('badge-d2', phases.p2.dur + ' г.');
+            safeSetText('badge-d3', phases.p3.dur + ' г.');
+
+            safeSetText('lbl-p1', phases.p1.name);
+            safeSetText('lbl-p2', phases.p2.name);
+            safeSetText('lbl-p3', phases.p3.name);
+
+            safeSetText('pay-p1', 'Pay: ' + phases.p1.payout + '%');
+            safeSetText('pay-p2', 'Pay: ' + phases.p2.payout + '%');
+            safeSetText('pay-p3', 'Pay: ' + phases.p3.payout + '%');
+        }
+
+        function renderSummary(result, inputs) {
+            const { irr, wacc, fv, upside, spread, finalPE, pvDiv, pvExit, meta } = result;
+            safeSetText('disp-years', inputs.N + ' лет');
+            
+            const irrEl = document.getElementById('res-irr');
+            if (irr == null) {
+                irrEl.innerText = 'n/a'; irrEl.className = "text-5xl font-bold tracking-tight text-slate-300";
+            } else {
+                irrEl.innerText = (irr * 100).toFixed(1) + '%';
+                irrEl.className = irr >= wacc ? "text-5xl font-bold tracking-tight text-green-400" : "text-5xl font-bold tracking-tight text-yellow-400";
+            }
+            
+            safeSetText('res-wacc-display', (wacc * 100).toFixed(1) + '%');
+            
+            const alphaEl = document.getElementById('res-alpha');
+            if (spread == null) { alphaEl.innerText = 'n/a'; alphaEl.className = "font-mono font-bold text-xl text-slate-300"; }
+            else {
+                alphaEl.innerText = (spread > 0 ? '+' : '') + spread.toFixed(1) + '%';
+                alphaEl.className = spread >= 0 ? "font-mono font-bold text-xl text-green-400" : "font-mono font-bold text-xl text-red-400";
+            }
+            
+            const upEl = document.getElementById('res-upside');
+            if (upside == null) { upEl.innerText = 'n/a'; upEl.className = "text-xl font-bold text-slate-300"; }
+            else {
+                upEl.innerText = (upside > 0 ? '+' : '') + upside.toFixed(1) + '%';
+                upEl.className = upside >= 0 ? "text-xl font-bold text-green-400" : "text-xl font-bold text-red-400";
+            }
+
+            safeSetText('res-fv', formatCurrency(fv));
+            safeSetText('res-exit-pe', isFinite(finalPE) ? finalPE.toFixed(1) + 'x' : '--x');
+            safeSetText('res-pv-div', formatCurrency(pvDiv));
+            safeSetText('res-pv-exit', formatCurrency(pvExit));
+
+            const totalPV = pvDiv + pvExit;
+            let divShare = null, exitShare = null;
+            if (totalPV > 0) { divShare = pvDiv / totalPV * 100; exitShare = pvExit / totalPV * 100; }
+            safeSetText('res-pv-div-share', divShare != null ? divShare.toFixed(1) + '%' : '--%');
+            safeSetText('res-pv-exit-share', exitShare != null ? exitShare.toFixed(1) + '%' : '--%');
+
+            renderTimeline(meta);
+        }
+
+        // --- INPUTS & MAIN CALC ---
+        function readInputsFromDOM() {
+            const priceRaw = parseFloat(document.getElementById('inp-price').value);
+            const rpsRaw = parseFloat(document.getElementById('inp-rps').value);
+            const growthRaw = parseFloat(document.getElementById('inp-growth').value);
+            const marginRaw = parseFloat(document.getElementById('inp-forecast-margin').value);
+            const waccRaw = parseFloat(document.getElementById('inp-wacc').value);
+            const payoutRaw = parseFloat(document.getElementById('inp-payout').value);
+            const sliderY = document.getElementById('slider-years');
+
+            const startPrice = Number.isFinite(priceRaw) ? priceRaw : 0;
+            const startRPS = Number.isFinite(rpsRaw) ? rpsRaw : 0;
+            const startGrowth = Number.isFinite(growthRaw) ? growthRaw : 0;
+            const forecastMargin = Number.isFinite(marginRaw) ? marginRaw : 0;
+            const startPayout = Number.isFinite(payoutRaw) ? payoutRaw : 0;
+
+            let wacc = Number.isFinite(waccRaw) ? waccRaw / 100 : CONFIG.DEFAULT_WACC;
+            if (wacc < 0) wacc = 0; if (wacc > 0.5) wacc = 0.5;
+            const N = sliderY ? parseInt(sliderY.value) : 15;
+
+            return { startPrice, startRPS, startGrowth, forecastMargin, wacc, startPayout, N };
+        }
+
+        function calculate() {
+            const userTheme = document.getElementById('theme-selector').value;
+            const inputs = readInputsFromDOM();
+            
+            // 1. Base Run
+            const result = runDCFModel(inputs, userTheme, state.scenario);
+            renderSummary(result, inputs);
+            renderTable(result.tableData);
+            updateChart(result.irrStream);
+
+            // 2. Sensitivity Run
+            renderSensitivity(result, inputs, userTheme, state.scenario);
+        }
+
+        function setScenario(s) {
+            state.scenario = s;
+            ['pessimistic', 'base', 'optimistic'].forEach(id => {
+                const btn = document.getElementById('btn-' + id);
+                if (!btn) return;
+                if (id === s) {
+                    if (id === 'pessimistic') btn.className = "flex-1 py-3 text-xs bg-red-100 text-red-800 border-red-300 rounded-lg shadow-inner font-bold border";
+                    else if (id === 'optimistic') btn.className = "flex-1 py-3 text-xs bg-green-100 text-green-800 border-green-300 rounded-lg shadow-inner font-bold border";
+                    else btn.className = "flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md font-bold";
+                } else {
+                    btn.className = "flex-1 py-3 text-xs border rounded-lg hover:bg-slate-50 transition-all font-medium text-slate-600";
+                }
+            });
+
+            const userTheme = document.getElementById('theme-selector').value;
+            const params = getCalcParams(userTheme, s);
+            const targetProfile = METRICS[params.themeKey];
+            
+            const slider = document.getElementById('slider-years');
+            if (slider && !state.userSetYears) {
+                slider.value = targetProfile.N;
+            }
+            calculate();
+        }
+
+        // --- EVENTS ---
+        document.getElementById('inp-ticker').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') loadTicker();
+        });
+
+        document.getElementById('theme-selector').addEventListener('change', () => {
+            setScenario(state.scenario || 'base');
+        });
+        
+        ['inp-price', 'inp-rps', 'inp-growth', 'inp-forecast-margin', 'inp-wacc', 'inp-payout']
+            .forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', calculate);
+            });
+
+        const sliderYearsEl = document.getElementById('slider-years');
+        if (sliderYearsEl) {
+            sliderYearsEl.addEventListener('input', () => {
+                state.userSetYears = true;
+                calculate();
+            });
+        }
+
+        document.getElementById('chk-log').addEventListener('change', calculate);
+
+        window.addEventListener('load', () => {
+            safeSetText('badge-analyst', CONFIG.ANALYST_YEARS + ' г.');
+            initChart();
+            setScenario('base');
+        });
+    </script>
 </body>
 </html>
