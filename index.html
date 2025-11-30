@@ -748,9 +748,12 @@
             if (scenario === 'optimistic') scenarioPEAdj = 1.15;   
             if (scenario === 'pessimistic') scenarioPEAdj = 0.85;  
 
+            // CHANGED: Use let so it can be reassigned if overrides are undefined
             const basePE = t3.pe * mods.pe * scenarioPEAdj;
-            const finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
+            let finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
 
+            // Gordon Growth Check for final PE - REMOVED entirely for stability
+            
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
             const eps0 = startRPS * (forecastMargin / 100);
             
