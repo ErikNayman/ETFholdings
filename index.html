@@ -139,7 +139,7 @@
 
                         <div>
                             <label class="block text-xs text-slate-400">Стоимость капитала (r, %)</label>
-                            <input type="number" id="inp-wacc" class="w-full border p-1 rounded" value="8" step="0.1">
+                            <input type="number" id="inp-wacc" class="w-full border p-1 rounded" value="8" step="0.1" min="0">
                         </div>
                         <div>
                             <label class="block text-xs text-slate-400 font-bold text-purple-600">Нач. Payout (%)</label>
@@ -244,6 +244,30 @@
                     </div>
                     <div class="grid grid-cols-4 gap-1 text-center select-none" id="sens-grid">
                         <!-- JS Generated -->
+                    </div>
+                </div>
+
+                <!-- CALCULATION DETAILS TABLE -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex justify-between">
+                        <h3 class="text-sm font-bold text-slate-700">Детализация Расчета</h3>
+                        <span class="text-xs text-slate-400">Номинальные значения ($)</span>
+                    </div>
+                    <div class="overflow-x-auto custom-scroll" style="max-height: 350px;">
+                        <table class="w-full text-sm text-left">
+                            <thead class="text-xs text-slate-500 uppercase bg-white sticky top-0 border-b">
+                                <tr>
+                                    <th class="px-4 py-2">Год</th>
+                                    <th class="px-4 py-2">Фаза</th>
+                                    <th class="px-4 py-2 text-right">RPS</th>
+                                    <th class="px-4 py-2 text-right">Маржа</th>
+                                    <th class="px-4 py-2 text-right">EPS</th>
+                                    <th class="px-4 py-2 text-right text-purple-600">Payout</th>
+                                    <th class="px-4 py-2 text-right font-bold text-blue-600">Flow</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -675,14 +699,14 @@
             ];
             peLabels.forEach((h, i) => {
                 const div = document.createElement('div');
-                div.className = "text-[10px] font-bold pb-1 " + (i===0 ? h.class : (i===2 ? "text-blue-400" : "text-slate-400"));
+                div.className = "text-[10px] font-bold pb-1 " + (i===0 ? h.class : (i===2 ? "text-blue-600" : "text-slate-500"));
                 div.innerText = h.label;
                 gridEl.appendChild(div);
             });
             const waccRows = [ { label: '+1.0%', val: currentWACC + waccStep }, { label: 'Base', val: currentWACC }, { label: '-1.0%', val: currentWACC - waccStep } ];
             waccRows.forEach(row => {
                 const rowHeader = document.createElement('div');
-                rowHeader.className = "text-[10px] font-bold my-auto text-left pl-1 " + (row.label==='Base' ? "text-blue-400" : "text-slate-500");
+                rowHeader.className = "text-[10px] font-bold my-auto text-left pl-1 " + (row.label==='Base' ? "text-blue-600" : "text-slate-500");
                 rowHeader.innerText = row.label;
                 gridEl.appendChild(rowHeader);
                 peLabels.slice(1).forEach(col => {
@@ -690,17 +714,50 @@
                     const simResult = runDCFModel(simInputs, theme, scenario, { finalPE: col.val });
                     const cell = document.createElement('div');
                     const isBase = (row.label === 'Base' && col.label === 'Base');
-                    let colorClass = "bg-slate-700 text-slate-300";
-                    if (isBase) colorClass = "bg-blue-600 text-white font-bold border border-blue-400 transform scale-105 shadow-lg z-10";
-                    else {
+                    
+                    // UPDATED COLORS FOR BETTER READABILITY
+                    let colorClass = "bg-slate-100 text-slate-600"; // Default light gray
+                    
+                    if (isBase) {
+                        colorClass = "bg-blue-600 text-white font-bold border border-blue-400 transform scale-105 shadow-lg z-10";
+                    } else {
                         const change = (simResult.fv - baseResult.fv) / (baseResult.fv || 1);
-                        if (change > 0.05) colorClass = "bg-green-900/40 text-green-300";
-                        else if (change < -0.05) colorClass = "bg-red-900/40 text-red-300";
+                        if (change > 0.05) colorClass = "bg-green-100 text-green-800 font-medium border border-green-200"; // Light Green
+                        else if (change < -0.05) colorClass = "bg-red-50 text-red-800 font-medium border border-red-100"; // Light Red
                     }
+                    
                     cell.className = `text-[11px] font-mono py-1 rounded-sm cursor-default flex items-center justify-center ${colorClass}`;
                     cell.innerText = '$' + simResult.fv.toLocaleString('en-US', {maximumFractionDigits: 0});
                     gridEl.appendChild(cell);
                 });
+            });
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                if (row.isExit) tr.className = "bg-indigo-50 font-bold border-t-2 border-indigo-100";
+                else if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
+                else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
+                
+                const usd = n => formatCurrency(n);
+                const pct = n => formatPercent(n);
+                const payoutTxt = row.isExit || row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
+
+                tr.innerHTML = `
+                    <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
+                    <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
+                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.rps)}</td>
+                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : pct(row.margin)}</td>
+                    <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.eps)}</td>
+                    <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
+                    <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${usd(row.flow)}</td>
+                `;
+                tbody.appendChild(tr);
             });
         }
 
@@ -841,12 +898,14 @@
         // --- MAIN ---
         function readInputsFromDOM() {
             const getVal = (id) => parseFloat(document.getElementById(id).value);
+            const waccInput = getVal('inp-wacc'); // Capture separate variable
             return {
                 startPrice: getVal('inp-price') || 0,
                 startRPS: getVal('inp-rps') || 0,
                 startGrowth: getVal('inp-growth') || 0,
                 forecastMargin: getVal('inp-forecast-margin') || 0,
-                wacc: (getVal('inp-wacc') || 8)/100,
+                // Check isNaN so 0 is allowed
+                wacc: (isNaN(waccInput) ? 8 : waccInput)/100,
                 startPayout: getVal('inp-payout') || 0,
                 N: parseInt(document.getElementById('slider-years').value) || 15
             };
@@ -859,6 +918,7 @@
             // 1. Run Base to populate basic data
             const result = runDCFModel(inputs, userTheme, state.scenario);
             renderSummary(result, inputs);
+            renderTable(result.tableData);
             updateChart(result.irrStream);
             renderSensitivity(result, inputs, userTheme, state.scenario);
             
