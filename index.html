@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DCF Pro: Excel Import</title>
+    <title>DCF Pro: Smart Excel Import</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- SheetJS (Community Edition from CDNJS for better compatibility) -->
+    <!-- SheetJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -354,11 +354,37 @@
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    // SMART SCANNING: Iterate through ALL sheets
+                    let successCount = 0;
+                    let lastError = "";
 
-                    processExcelData(jsonData);
+                    for (const sheetName of workbook.SheetNames) {
+                        const worksheet = workbook.Sheets[sheetName];
+                        // Read as array of arrays to find header manually
+                        const rawData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                        
+                        // Attempt to process
+                        const res = extractDataFromSheet(rawData);
+                        if (res && res.count > 0) {
+                            // Merge found data into Global DB
+                            GLOBAL_DB = { ...GLOBAL_DB, ...res.db };
+                            successCount += res.count;
+                            
+                            // Visual feedback for the sheet found
+                            console.log(`Found data in sheet: ${sheetName} (${res.count} items)`);
+                        }
+                    }
+
+                    if (successCount > 0) {
+                        document.getElementById('db-status').innerText = `Excel (${successCount} шт.)`;
+                        document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
+                        alert(`Успешно загружено ${successCount} компаний! Введите тикер в поиск.`);
+                    } else {
+                        errEl.innerText = "Не удалось найти данные ни на одном листе. Проверьте названия колонок (Ticker, Price...).";
+                        errEl.classList.remove('hidden');
+                    }
+
                 } catch (err) {
                     console.error(err);
                     errEl.innerText = "Ошибка чтения файла. Убедитесь, что это корректный .xlsx";
@@ -372,17 +398,15 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // --- THEME HELPER (Added back to fix undefined error) ---
+        // --- THEME HELPER ---
         function normalizeTheme(raw) {
             if (!raw) return null;
             const str = String(raw).toLowerCase().trim();
             
-            // Direct mapping attempt
             const keys = Object.keys(METRICS);
             const exact = keys.find(k => k.toLowerCase() === str);
             if (exact) return exact;
 
-            // Fuzzy mapping
             if (str.includes('rocket') || str.includes('start')) return 'Rocket';
             if (str.includes('expansion') || str.includes('nvda')) return 'Expansion';
             if (str.includes('momentum') || str.includes('quality')) return 'Momentum';
@@ -394,69 +418,101 @@
             return null;
         }
 
-        function processExcelData(data) {
-            const errEl = document.getElementById('upload-error');
+        // Renamed to separate processing from side-effects
+        function extractDataFromSheet(rows) {
             const newDB = {};
             let count = 0;
-            let themeCount = 0;
 
-            if (!data || data.length === 0) {
-                 errEl.innerText = "Файл пуст или данные не найдены.";
-                 errEl.classList.remove('hidden');
-                 return;
+            if (!rows || rows.length === 0) return { count: 0, db: {} };
+
+            // 1. Find Header Row
+            let headerRowIndex = -1;
+            let colMap = {}; 
+
+            // Keywords to look for
+            const keyMap = {
+                ticker: ['ticker', 'symbol', 'code', 'тикер'],
+                price: ['price', 'close', 'price ($)', 'цена', 'last'],
+                rps: ['rps', 'revenue per share', 'sales per share', 'revenue', 'выручка'],
+                growth: ['growth', 'growth %', 'g', 'рост'],
+                margin: ['margin', 'net margin', 'margin %', 'маржа'],
+                wacc: ['wacc', 'cost of capital', 'r', 'ставка', 'ks'],
+                payout: ['payout', 'payout ratio', 'дивиденды', 'div'],
+                theme: ['theme', 'profile', 'strategy', 'type', 'тема']
+            };
+
+            // Scan first 20 rows
+            for (let i = 0; i < Math.min(rows.length, 20); i++) {
+                const row = rows[i];
+                let matches = 0;
+                let tempMap = {};
+
+                // Check each cell in the row
+                row.forEach((cell, cellIdx) => {
+                    if (!cell) return;
+                    const val = String(cell).toLowerCase().trim();
+                    
+                    // Check against keyMap
+                    for (const [key, candidates] of Object.entries(keyMap)) {
+                        if (candidates.some(c => val === c || val.includes(c))) {
+                            if (tempMap[key] === undefined) { 
+                                tempMap[key] = cellIdx;
+                                matches++;
+                            }
+                        }
+                    }
+                });
+
+                // Threshold: If we found at least Ticker and Price, assume this is the header
+                if (tempMap.ticker !== undefined && tempMap.price !== undefined) {
+                    headerRowIndex = i;
+                    colMap = tempMap;
+                    break;
+                }
             }
 
-            // Diagnostic: Show keys of first row if failed
-            const firstRowKeys = Object.keys(data[0]).join(', ');
+            if (headerRowIndex === -1) return { count: 0, db: {} };
 
-            // Flexible column matching
-            const findKey = (row, candidates) => Object.keys(row).find(k => candidates.includes(k.toLowerCase().trim()));
+            // 2. Process Data Rows
+            for (let i = headerRowIndex + 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length === 0) continue;
 
-            data.forEach(row => {
-                // Find column names dynamically
-                const kTicker = findKey(row, ['ticker', 'symbol', 'code', 'тикер']);
-                const kPrice = findKey(row, ['price', 'close', 'price ($)', 'цена']);
-                const kRPS = findKey(row, ['rps', 'revenue per share', 'sales per share', 'revenue']);
-                const kGrowth = findKey(row, ['growth', 'growth %', 'g', 'рост']);
-                const kMargin = findKey(row, ['margin', 'net margin', 'margin %', 'маржа']);
-                const kWacc = findKey(row, ['wacc', 'cost of capital', 'r', 'ставка']);
-                const kPayout = findKey(row, ['payout', 'payout ratio', 'дивиденды']);
-                const kTheme = findKey(row, ['theme', 'profile', 'strategy', 'type', 'тема']);
+                // Extract value by index using colMap
+                const getValue = (key) => {
+                    const idx = colMap[key];
+                    if (idx === undefined) return null;
+                    return row[idx];
+                };
 
-                if (kTicker && kPrice) {
-                    const ticker = String(row[kTicker]).trim().toUpperCase();
+                const rawTicker = getValue('ticker');
+                const rawPrice = getValue('price');
+
+                if (rawTicker && rawPrice) {
+                    const ticker = String(rawTicker).trim().toUpperCase();
                     
                     // Try to extract and normalize theme
                     let extractedTheme = null;
-                    if (kTheme && row[kTheme]) {
-                        extractedTheme = normalizeTheme(row[kTheme]);
-                        if (extractedTheme) themeCount++;
+                    const rawTheme = getValue('theme');
+                    if (rawTheme) {
+                        extractedTheme = normalizeTheme(rawTheme);
                     }
 
                     newDB[ticker] = {
                         name: ticker + ' (Excel)',
-                        price: parseFloat(row[kPrice]) || 0,
-                        rps: parseFloat(row[kRPS]) || 10,
-                        growth: parseFloat(row[kGrowth]) || 5,
-                        margin: parseFloat(row[kMargin]) || 10,
-                        wacc: parseFloat(row[kWacc]) || 8,
-                        payout: parseFloat(row[kPayout]) || 0,
-                        profile: extractedTheme // Can be null, will fallback to auto-detect
+                        price: parseFloat(rawPrice) || 0,
+                        rps: parseFloat(getValue('rps')) || 10,
+                        growth: parseFloat(getValue('growth')) || 5,
+                        margin: parseFloat(getValue('margin')) || 10,
+                        wacc: parseFloat(getValue('wacc')) || 8,
+                        payout: parseFloat(getValue('payout')) || 0,
+                        profile: extractedTheme 
                     };
                     count++;
                 }
-            });
-
-            if (count > 0) {
-                GLOBAL_DB = newDB;
-                const themeMsg = themeCount > 0 ? `, Темы: ${themeCount}` : '';
-                document.getElementById('db-status').innerText = `Excel (${count}${themeMsg})`;
-                document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
-                alert(`Успешно загружено ${count} компаний${themeMsg}! Теперь введите тикер в поиск.`);
-            } else {
-                errEl.innerText = `Не удалось найти данные. Колонки в файле: [${firstRowKeys}]. Ожидались: Ticker, Price...`;
-                errEl.classList.remove('hidden');
             }
+
+            return { count, db: newDB };
         }
 
         // --- AUTO-PROFILE LOGIC ---
@@ -1017,6 +1073,12 @@
             calculate();
         }
 
+        window.addEventListener('load', () => {
+            safeSetText('badge-analyst', CONFIG.ANALYST_YEARS + ' г.');
+            initChart();
+            setScenario('base');
+        });
+        
         // --- EVENTS ---
         document.getElementById('inp-ticker').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') loadTicker();
@@ -1041,12 +1103,6 @@
         }
 
         document.getElementById('chk-log').addEventListener('change', calculate);
-
-        window.addEventListener('load', () => {
-            safeSetText('badge-analyst', CONFIG.ANALYST_YEARS + ' г.');
-            initChart();
-            setScenario('base');
-        });
     </script>
 </body>
 </html>
