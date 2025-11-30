@@ -341,7 +341,13 @@
             deep_pess:  { pe: 0.8,  margin: 0.8, growth: 0.8 }
         };
 
-        let state = { scenario: 'base', charts: {}, userSetYears: false, currentTicker: '' };
+        let state = { 
+            scenario: 'base', 
+            charts: {}, 
+            userSetYears: false, 
+            currentTicker: '',
+            maxNFromFile: null   // сюда положим N из Excel
+        };
 
         // --- EXCEL LOGIC ---
         function handleExcelUpload(e) {
@@ -536,10 +542,15 @@
                 // Handle custom N
                 const slider = document.getElementById('slider-years');
                 if (data.n_term && data.n_term > 0) {
-                    slider.value = Math.min(Math.max(data.n_term, 5), 35); // Clamp 5-35
+                    const nTerm = Math.min(Math.max(data.n_term, 5), 35); // 5-35 safety clamp
+                    slider.max = nTerm;
+                    slider.value = nTerm;
                     state.userSetYears = true;
+                    state.maxNFromFile = nTerm;
                 } else {
+                    slider.max = 35; // default max
                     state.userSetYears = false; // Reset so default theme N applies
+                    state.maxNFromFile = null;
                 }
 
                 panelEl.classList.add('flash-update');
@@ -574,10 +585,15 @@
             // 3. Reset Horizon (N)
             const slider = document.getElementById('slider-years');
             if (data.n_term && data.n_term > 0) {
-                slider.value = Math.min(Math.max(data.n_term, 5), 35); 
+                const nTerm = Math.min(Math.max(data.n_term, 5), 35);
+                slider.max = nTerm;
+                slider.value = nTerm;
                 state.userSetYears = true;
+                state.maxNFromFile = nTerm;
             } else {
+                slider.max = 35;
                 state.userSetYears = false; 
+                state.maxNFromFile = null;
                 // Will be auto-set by setScenario->getScenarioHorizon logic for base
             }
             
@@ -600,7 +616,12 @@
         // --- SCENARIO HORIZON HELPER ---
         function getScenarioHorizon(baseN, scenario) {
             const minN = 5;
-            const maxN = 30; // Changed from 35 to 30 as suggested
+            let maxN = 30; // General hard cap changed from 35 to 30 previously, keeping logic consistent
+
+            // Cap maxN if loaded from file
+            if (state.maxNFromFile != null) {
+                maxN = Math.min(maxN, state.maxNFromFile);
+            }
 
             if (scenario === 'optimistic') {
                 // +20% horizon, roughly
