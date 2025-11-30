@@ -425,8 +425,8 @@
 
             let headerRowIndex = -1;
             let colMap = {}; 
-            // IMPROVED KEYMAP: Removed ambiguous short keys like 'r', 'g'
-            // Added 'n' / 'term' for custom years
+            // IMPROVED KEYMAP: Removed ambiguous short keys like 'r', 'g', and especially 'n' (matched Revenue/Margin)
+            // Added 'n term' specifically
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
@@ -436,7 +436,7 @@
                 wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
                 payout: ['payout', 'dividen', 'дивиден'], 
                 theme: ['theme', 'profile', 'strategy', 'тема'],
-                n: ['n', 'years', 'term', 'srok', 'срок', 'horizon'] // NEW: Custom N
+                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon'] // FIXED: Specific 'n term' match
             };
 
             for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -447,6 +447,8 @@
                     const val = String(cell).toLowerCase().trim();
                     for (const [key, candidates] of Object.entries(keyMap)) {
                         if (candidates.some(c => val.includes(c))) {
+                            // Only assign if not already found to avoid overwriting with less specific matches if order mattered
+                            // But here we rely on specific keywords not overlapping too much
                             if (tempMap[key] === undefined) tempMap[key] = cellIdx;
                         }
                     }
