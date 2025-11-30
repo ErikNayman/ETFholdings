@@ -107,8 +107,10 @@
                     <select id="theme-selector" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 font-medium mb-3">
                         <option value="Rocket">Rocket Growth (Startups)</option>
                         <option value="Expansion">Expansion Compounder (NVDA)</option>
+                        <option value="IndexTech">Index Tech / Growth (QQQ)</option> <!-- NEW -->
                         <option value="Momentum">Quality Momentum (AAPL)</option>
-                        <option value="Steady">Steady Compounder (SPY, WMT)</option>
+                        <option value="Steady">Steady Compounder (SPY)</option>
+                        <option value="IndexValue">Index Value / Blue Chip (DIA)</option> <!-- NEW -->
                         <option value="Dividend">Dividend Stability (JPM)</option>
                         <option value="Fallen">Fallen Angel (PYPL)</option>
                         <option value="DeepValue">Deep Value (GM)</option>
@@ -286,13 +288,13 @@
             IRR_MAX_RATE: 5
         };
 
-        const THEME_ORDER = ['Rocket', 'Expansion', 'Momentum', 'Steady', 'Dividend', 'DeepValue'];
+        const THEME_ORDER = ['Rocket', 'Expansion', 'IndexTech', 'Momentum', 'Steady', 'IndexValue', 'Dividend', 'DeepValue', 'Fallen'];
         
-        // --- DEMO DATABASE (UPDATED WITH SPY, QQQ, DIA) ---
+        // --- DEMO DATABASE (UPDATED WITH PROFILES) ---
         const DEMO_DB = {
             'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 3.0, payout: 27.1, profile: 'Steady' },
-            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 12.5, margin: 19.5, wacc: 8.5, payout: 10, profile: 'Steady' },
-            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 5.5, margin: 11.5, wacc: 7.5, payout: 35, profile: 'Steady' },
+            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 12.5, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech' },
+            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 5.5, margin: 11.5, wacc: 7.5, payout: 35, profile: 'IndexValue' },
             'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15 },
             'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2 },
             'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0 },
@@ -306,9 +308,11 @@
 
         const METRICS = {
             'Rocket':    { name: 'Rocket',    growth: 40,    margin: 5,    pe: 75,  payout: 0,  N: 20, lcX: 15 }, 
-            'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.7, pe: 24.3, payout: 15, N: 15, lcX: 35 }, 
+            'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.7, pe: 24.3, payout: 15, N: 15, lcX: 30 }, 
+            'IndexTech': { name: 'Index Tech',growth: 12.0, margin: 21.0, pe: 27.0, payout: 15, N: 15, lcX: 40 }, // High PE, High Growth
             'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 27.8, pe: 22.7, payout: 50, N: 12, lcX: 55 }, 
-            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12, lcX: 75 }, 
+            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12, lcX: 65 }, 
+            'IndexValue':{ name: 'Index Value',growth: 5.5, margin: 11.5, pe: 17.5, payout: 40, N: 12, lcX: 75 }, // Low PE, Low Growth
             'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8, pe: 13.9, payout: 75, N: 9,  lcX: 85 },
             'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.3, pe: 10.9, payout: 50, N: 6,  lcX: 95 },
             'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 6.5,  pe: 11.8, payout: 30, N: 9,  lcX: 90 } 
@@ -317,8 +321,10 @@
         const BASE_CHAINS = {
             'Rocket':    ['Rocket', 'Expansion', 'Momentum'],
             'Expansion': ['Expansion', 'Momentum', 'Steady'],
+            'IndexTech': ['IndexTech', 'Momentum', 'Steady'], // Default decay if not index
             'Momentum':  ['Momentum', 'Steady', 'Dividend'],
             'Steady':    ['Steady', 'Dividend', 'DeepValue'],
+            'IndexValue':['IndexValue', 'Dividend', 'DeepValue'],
             'Dividend':  ['Dividend', 'DeepValue', 'DeepValue'],
             'Fallen':    ['Fallen', 'DeepValue', 'Steady'],
             'DeepValue': ['DeepValue', 'Steady', 'Dividend']
@@ -386,6 +392,10 @@
             const keys = Object.keys(METRICS);
             const exact = keys.find(k => k.toLowerCase() === str);
             if (exact) return exact;
+            
+            if (str.includes('nasdaq') || str.includes('qqq') || str.includes('tech index')) return 'IndexTech';
+            if (str.includes('dow') || str.includes('dia') || str.includes('value index')) return 'IndexValue';
+            
             if (str.includes('rocket') || str.includes('start')) return 'Rocket';
             if (str.includes('expansion') || str.includes('nvda')) return 'Expansion';
             if (str.includes('momentum') || str.includes('quality')) return 'Momentum';
@@ -473,6 +483,10 @@
             const g = data.growth;
             const m = data.margin;
             const p = data.payout;
+            // Heuristics
+            if (data.name && data.name.includes('Nasdaq')) return 'IndexTech';
+            if (data.name && data.name.includes('Dow')) return 'IndexValue';
+            
             if (g > 30) return 'Rocket';
             if (g > 15 && m > 20) return 'Expansion';
             if (g > 10 && m > 15 && p > 10) return 'Momentum';
@@ -526,11 +540,12 @@
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: [] };
             
             // --- INDEX EXCEPTION: ETERNAL STEADY STATE ---
-            // Applies to SPY, QQQ, DIA and potentially others if added to this list
+            // Applies to SPY, QQQ, DIA
             if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
-                // Indices ignore normal lifecycle decay. They stay Steady/Steady/Steady.
-                // They also ignore heavy pessimistic decay (indices recover/rebalance).
-                res.chain = ['Steady', 'Steady', 'Steady'];
+                // Indices preserve their specific profile forever
+                // QQQ stays IndexTech, DIA stays IndexValue
+                res.chain = [selected, selected, selected];
+                
                 if (scenario === 'optimistic') res.mods = { pe: 1.1, margin: 1.05, growth: 1.05 };
                 else if (scenario === 'pessimistic') res.mods = { pe: 0.9, margin: 0.95, growth: 0.95 };
                 return res;
