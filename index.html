@@ -323,7 +323,7 @@
             'Expansion': ['Expansion', 'Momentum', 'Steady'],
             'IndexTech': ['IndexTech', 'Momentum', 'Steady'], // Default decay if not index
             'Momentum':  ['Momentum', 'Steady', 'Dividend'],
-            'Steady':    ['Steady', 'Dividend', 'DeepValue'],
+            'Steady':    ['Steady', 'Dividend', 'Dividend'], // UPDATED: Steady decays to Dividend (better quality)
             'IndexValue':['IndexValue', 'Dividend', 'DeepValue'],
             'Dividend':  ['Dividend', 'DeepValue', 'DeepValue'],
             'Fallen':    ['Fallen', 'DeepValue', 'Steady'],
@@ -650,8 +650,15 @@
             };
 
             const modelYears = Math.max(1, N - CONFIG.ANALYST_YEARS);
-            let p1_dur = Math.floor(modelYears / 3);
-            let p2_dur = Math.floor(modelYears / 3);
+            
+            // UPDATED PHASE DURATION LOGIC:
+            // Cap Phase 1 and Phase 2 to max 5 years each to avoid "infinite growth" overvaluation
+            // The rest of the years go to Phase 3 (Terminal/Stable)
+            let p1_dur = Math.min(5, Math.floor(modelYears / 3));
+            let p2_dur = Math.min(5, Math.floor(modelYears / 3));
+            // If modelYears is small (e.g. 3), floor/3 gives 1. min(5,1) = 1. Correct.
+            // If modelYears is large (e.g. 30), floor/3 gives 10. min(5,10) = 5. Correct.
+            
             let p3_dur = modelYears - p1_dur - p2_dur;
             
             const basePE = t3.pe * mods.pe;
