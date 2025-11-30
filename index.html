@@ -90,7 +90,7 @@
 
                     <!-- Search -->
                     <div class="flex gap-2">
-                        <input type="text" id="inp-ticker" placeholder="TICKER (e.g. SPY, AAPL)" class="w-full bg-indigo-700 border border-indigo-500 text-white placeholder-indigo-300 rounded px-3 py-2 font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white">
+                        <input type="text" id="inp-ticker" placeholder="TICKER (e.g. SPY, QQQ, DIA)" class="w-full bg-indigo-700 border border-indigo-500 text-white placeholder-indigo-300 rounded px-3 py-2 font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white">
                         <button onclick="loadTicker()" class="bg-white text-indigo-600 px-4 py-2 rounded font-bold hover:bg-indigo-50 transition-colors">Go</button>
                     </div>
                     <div id="ticker-error" class="text-xs text-red-300 mt-2 hidden">Тикер не найден</div>
@@ -288,9 +288,11 @@
 
         const THEME_ORDER = ['Rocket', 'Expansion', 'Momentum', 'Steady', 'Dividend', 'DeepValue'];
         
-        // --- DEMO DATABASE (UPDATED WITH SPY) ---
+        // --- DEMO DATABASE (UPDATED WITH SPY, QQQ, DIA) ---
         const DEMO_DB = {
             'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 3.0, payout: 27.1, profile: 'Steady' },
+            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 12.5, margin: 19.5, wacc: 8.5, payout: 10, profile: 'Steady' },
+            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 5.5, margin: 11.5, wacc: 7.5, payout: 35, profile: 'Steady' },
             'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15 },
             'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2 },
             'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0 },
@@ -523,10 +525,11 @@
         function getCalcParams(selected, scenario, ticker) {
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: [] };
             
-            // --- SPY EXCEPTION: ETERNAL STEADY STATE ---
-            if (ticker === 'SPY') {
-                // SPY ignores normal lifecycle decay. It stays Steady/Steady/Steady.
-                // It also ignores heavy pessimistic decay (indices recover).
+            // --- INDEX EXCEPTION: ETERNAL STEADY STATE ---
+            // Applies to SPY, QQQ, DIA and potentially others if added to this list
+            if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
+                // Indices ignore normal lifecycle decay. They stay Steady/Steady/Steady.
+                // They also ignore heavy pessimistic decay (indices recover/rebalance).
                 res.chain = ['Steady', 'Steady', 'Steady'];
                 if (scenario === 'optimistic') res.mods = { pe: 1.1, margin: 1.05, growth: 1.05 };
                 else if (scenario === 'pessimistic') res.mods = { pe: 0.9, margin: 0.95, growth: 0.95 };
@@ -586,7 +589,7 @@
         function runDCFModel(inputs, userThemeKey, scenario, overrides = {}) {
             const { startPrice, startRPS, startGrowth, forecastMargin, wacc, startPayout, N } = inputs;
             
-            // Pass ticker to params to check for SPY
+            // Pass ticker to params to check for SPY/Indices
             const params = getCalcParams(userThemeKey, scenario, state.currentTicker);
             
             const mods = params.mods;
