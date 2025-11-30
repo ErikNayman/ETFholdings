@@ -292,9 +292,9 @@
         
         // --- DEMO DATABASE (UPDATED WITH PROFILES) ---
         const DEMO_DB = {
-            'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 3.0, payout: 27.1, profile: 'Steady' },
-            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 12.5, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech' },
-            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 5.5, margin: 11.5, wacc: 7.5, payout: 35, profile: 'IndexValue' },
+            'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 8.0, payout: 27.1, profile: 'Steady' }, // WACC fixed to 8.0
+            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 11.0, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech' }, // Growth 12->11, WACC 8.5
+            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 5.5, margin: 11.5, wacc: 7.5, payout: 35, profile: 'IndexValue' }, // WACC 7.5
             'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15 },
             'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2 },
             'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0 },
@@ -309,10 +309,10 @@
         const METRICS = {
             'Rocket':    { name: 'Rocket',    growth: 40,    margin: 5,    pe: 75,  payout: 0,  N: 20, lcX: 15 }, 
             'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.7, pe: 24.3, payout: 15, N: 15, lcX: 30 }, 
-            'IndexTech': { name: 'Index Tech',growth: 12.0, margin: 21.0, pe: 27.0, payout: 15, N: 15, lcX: 40 }, // High PE, High Growth
+            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 21.0, pe: 25.0, payout: 15, N: 15, lcX: 40 }, // Slightly more conservative
             'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 27.8, pe: 22.7, payout: 50, N: 12, lcX: 55 }, 
             'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12, lcX: 65 }, 
-            'IndexValue':{ name: 'Index Value',growth: 5.5, margin: 11.5, pe: 17.5, payout: 40, N: 12, lcX: 75 }, // Low PE, Low Growth
+            'IndexValue':{ name: 'Index Value',growth: 5.5, margin: 11.5, pe: 17.5, payout: 40, N: 12, lcX: 75 }, 
             'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8, pe: 13.9, payout: 75, N: 9,  lcX: 85 },
             'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.3, pe: 10.9, payout: 50, N: 6,  lcX: 95 },
             'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 6.5,  pe: 11.8, payout: 30, N: 9,  lcX: 90 } 
@@ -539,15 +539,26 @@
         function getCalcParams(selected, scenario, ticker) {
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: [] };
             
-            // --- INDEX EXCEPTION: ETERNAL STEADY STATE ---
-            // Applies to SPY, QQQ, DIA
+            // --- INDEX EXCEPTIONS: SPECIFIC LIFECYCLES ---
             if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
-                // Indices preserve their specific profile forever
-                // QQQ stays IndexTech, DIA stays IndexValue
-                res.chain = [selected, selected, selected];
                 
+                // 1. QQQ (Tech): High growth -> Market Average (Mean Reversion)
+                if (ticker === 'QQQ') {
+                    res.chain = ['IndexTech', 'IndexTech', 'Steady'];
+                }
+                // 2. DIA (Value): Moderate growth -> Stays Value (Conservative)
+                else if (ticker === 'DIA') {
+                    res.chain = ['IndexValue', 'IndexValue', 'IndexValue'];
+                }
+                // 3. SPY (Market): Market -> Market
+                else {
+                    res.chain = ['Steady', 'Steady', 'Steady'];
+                }
+                
+                // Scenario Modifiers for Indices (less volatile than single stocks)
                 if (scenario === 'optimistic') res.mods = { pe: 1.1, margin: 1.05, growth: 1.05 };
                 else if (scenario === 'pessimistic') res.mods = { pe: 0.9, margin: 0.95, growth: 0.95 };
+                
                 return res;
             }
 
