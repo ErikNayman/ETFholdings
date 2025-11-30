@@ -83,14 +83,14 @@
                         <div class="hidden group-hover:block absolute top-full left-0 w-full bg-slate-800 text-slate-200 text-[10px] p-3 rounded mt-1 z-20 shadow-xl border border-slate-600 leading-relaxed">
                             <strong>Нужные колонки:</strong><br>
                             Ticker, Price, RPS, Growth, Margin, WACC, Payout<br>
-                            <em class="text-slate-400">Опционально: Theme</em>
+                            <em class="text-slate-400">Опционально: Theme, N (срок)</em>
                         </div>
                     </div>
                     <div id="upload-error" class="text-xs bg-red-500 text-white p-2 rounded mb-2 hidden"></div>
 
                     <!-- Search -->
                     <div class="flex gap-2">
-                        <input type="text" id="inp-ticker" placeholder="TICKER (e.g. SPY, QQQ, DIA)" class="w-full bg-indigo-700 border border-indigo-500 text-white placeholder-indigo-300 rounded px-3 py-2 font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white">
+                        <input type="text" id="inp-ticker" placeholder="TICKER (e.g. SPY, QQQ)" class="w-full bg-indigo-700 border border-indigo-500 text-white placeholder-indigo-300 rounded px-3 py-2 font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white">
                         <button onclick="loadTicker()" class="bg-white text-indigo-600 px-4 py-2 rounded font-bold hover:bg-indigo-50 transition-colors">Go</button>
                     </div>
                     <div id="ticker-error" class="text-xs text-red-300 mt-2 hidden">Тикер не найден</div>
@@ -294,7 +294,7 @@
         const DEMO_DB = {
             'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 8.0, payout: 27.1, profile: 'Steady' }, 
             'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 11.0, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech' }, 
-            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 6.5, margin: 12.5, wacc: 7.5, payout: 35, profile: 'IndexValue' }, // Updated: Higher Growth/Margin
+            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 6.5, margin: 12.5, wacc: 7.5, payout: 35, profile: 'IndexValue' }, 
             'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15 },
             'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2 },
             'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0 },
@@ -312,7 +312,7 @@
             'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 21.0, pe: 25.0, payout: 15, N: 15, lcX: 40 }, 
             'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 27.8, pe: 22.7, payout: 50, N: 12, lcX: 55 }, 
             'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12, lcX: 65 }, 
-            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5, pe: 19.5, payout: 40, N: 12, lcX: 75 }, // Updated: PE 17.5->19.5, Growth 5.5->6.5
+            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5, pe: 19.5, payout: 40, N: 12, lcX: 75 }, 
             'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8, pe: 13.9, payout: 75, N: 9,  lcX: 85 },
             'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.3, pe: 10.9, payout: 50, N: 6,  lcX: 95 },
             'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 6.5,  pe: 11.8, payout: 30, N: 9,  lcX: 90 } 
@@ -414,16 +414,17 @@
             let headerRowIndex = -1;
             let colMap = {}; 
             // IMPROVED KEYMAP: Removed ambiguous short keys like 'r', 'g'
-            // Added Russian terms for better detection
+            // Added 'n' / 'term' for custom years
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
-                rps: ['rps', 'revenue', 'sales', 'выручка'], // 'revenue' is safer/broader
+                rps: ['rps', 'revenue', 'sales', 'выручка'], 
                 growth: ['growth', 'cagr', 'рост'], 
                 margin: ['margin', 'маржа'],
                 wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
-                payout: ['payout', 'dividen', 'дивиден'], // 'dividen' matches dividend, dividends
-                theme: ['theme', 'profile', 'strategy', 'тема']
+                payout: ['payout', 'dividen', 'дивиден'], 
+                theme: ['theme', 'profile', 'strategy', 'тема'],
+                n: ['n', 'years', 'term', 'srok', 'срок', 'horizon'] // NEW: Custom N
             };
 
             for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -458,11 +459,12 @@
                 if (rawTicker && rawPrice) {
                     const ticker = String(rawTicker).trim().toUpperCase();
                     
-                    // Helper to safely parse floats allowing 0
                     const safeFloat = (val, def) => {
                         const parsed = parseFloat(val);
                         return isNaN(parsed) ? def : parsed;
                     };
+
+                    const nVal = safeFloat(getValue('n'), null);
 
                     newDB[ticker] = {
                         name: ticker + ' (Excel)',
@@ -472,7 +474,8 @@
                         margin: safeFloat(getValue('margin'), 10),
                         wacc: safeFloat(getValue('wacc'), 8), 
                         payout: safeFloat(getValue('payout'), 0),
-                        profile: normalizeTheme(getValue('theme')) 
+                        profile: normalizeTheme(getValue('theme')),
+                        n_term: nVal // Store custom N
                     };
                     count++;
                 }
@@ -508,7 +511,7 @@
             
             if (GLOBAL_DB[rawTicker]) {
                 const data = GLOBAL_DB[rawTicker];
-                state.currentTicker = rawTicker; // Store loaded ticker
+                state.currentTicker = rawTicker; 
                 
                 document.getElementById('inp-price').value = data.price;
                 document.getElementById('inp-rps').value = data.rps;
@@ -520,6 +523,15 @@
                 const profile = data.profile || detectProfile(data);
                 document.getElementById('theme-selector').value = profile;
                 safeSetText('company-name', data.name || rawTicker);
+
+                // Handle custom N
+                const slider = document.getElementById('slider-years');
+                if (data.n_term && data.n_term > 0) {
+                    slider.value = Math.min(Math.max(data.n_term, 5), 35); // Clamp 5-35
+                    state.userSetYears = true;
+                } else {
+                    state.userSetYears = false; // Reset so default theme N applies
+                }
 
                 panelEl.classList.add('flash-update');
                 setTimeout(() => panelEl.classList.remove('flash-update'), 1000);
@@ -544,20 +556,16 @@
             // --- INDEX EXCEPTIONS: SPECIFIC LIFECYCLES ---
             if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
                 
-                // 1. QQQ (Tech): High growth -> Market Average (Mean Reversion)
                 if (ticker === 'QQQ') {
                     res.chain = ['IndexTech', 'IndexTech', 'Steady'];
                 }
-                // 2. DIA (Value): Moderate growth -> Stays Value (Conservative)
                 else if (ticker === 'DIA') {
                     res.chain = ['IndexValue', 'IndexValue', 'IndexValue'];
                 }
-                // 3. SPY (Market): Market -> Market
                 else {
                     res.chain = ['Steady', 'Steady', 'Steady'];
                 }
                 
-                // Scenario Modifiers for Indices (less volatile than single stocks)
                 if (scenario === 'optimistic') res.mods = { pe: 1.1, margin: 1.05, growth: 1.05 };
                 else if (scenario === 'pessimistic') res.mods = { pe: 0.9, margin: 0.95, growth: 0.95 };
                 
@@ -569,6 +577,13 @@
             
             if (selected === 'Rocket' && scenario === 'optimistic') res.mods = EDGE_MODS.rocket_opt; 
             else if (selected === 'DeepValue' && scenario === 'pessimistic') res.mods = EDGE_MODS.deep_pess; 
+            else if (selected === 'Expansion' && scenario === 'optimistic') {
+                // MODIFIED: Expansion optimistic logic
+                // Instead of switching theme to Rocket (too aggressive), stay Expansion but boost metrics
+                res.chain = ['Expansion', 'Expansion', 'Momentum'];
+                res.mods = { pe: 1.3, margin: 1.15, growth: 1.2 }; // +30% PE, +15% margin, +20% growth
+                return res;
+            }
             else if (selected === 'Fallen') {
                 if (scenario === 'optimistic') startKey = 'Expansion';
                 if (scenario === 'pessimistic') startKey = 'DeepValue';
@@ -1015,6 +1030,7 @@
             });
             const params = getCalcParams(document.getElementById('theme-selector').value, s);
             const slider = document.getElementById('slider-years');
+            // Allow manual override or auto-set N only if N not custom from Excel
             if (slider && !state.userSetYears) slider.value = METRICS[params.themeKey].N;
             calculate();
         }
