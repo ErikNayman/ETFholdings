@@ -312,7 +312,7 @@
             'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 21.0, pe: 25.0, payout: 15, N: 15, lcX: 40 }, 
             'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 27.8, pe: 22.7, payout: 50, N: 12, lcX: 55 }, 
             'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12, lcX: 65 }, 
-            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5, pe: 19.5, payout: 40, N: 12, lcX: 75 }, 
+            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5, pe: 19.5, payout: 40, N: 12, lcX: 75 }, // Updated: PE 17.5->19.5, Growth 5.5->6.5
             'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8, pe: 13.9, payout: 75, N: 9,  lcX: 85 },
             'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.3, pe: 10.9, payout: 50, N: 6,  lcX: 95 },
             'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 6.5,  pe: 11.8, payout: 30, N: 9,  lcX: 90 } 
@@ -323,7 +323,7 @@
             'Expansion': ['Expansion', 'Momentum', 'Steady'],
             'IndexTech': ['IndexTech', 'Momentum', 'Steady'], // Default decay if not index
             'Momentum':  ['Momentum', 'Steady', 'Dividend'],
-            'Steady':    ['Steady', 'Dividend', 'Dividend'], // UPDATED: Steady decays to Dividend (better quality)
+            'Steady':    ['Steady', 'Dividend', 'DeepValue'],
             'IndexValue':['IndexValue', 'Dividend', 'DeepValue'],
             'Dividend':  ['Dividend', 'DeepValue', 'DeepValue'],
             'Fallen':    ['Fallen', 'DeepValue', 'Steady'],
@@ -549,6 +549,23 @@
         function formatPercent(n) { return n == null || !isFinite(n) ? '--%' : n.toFixed(1) + '%'; }
         function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
+        // --- SCENARIO HORIZON HELPER ---
+        function getScenarioHorizon(baseN, scenario) {
+            const minN = 5;
+            const maxN = 30; // Changed from 35 to 30 as suggested
+
+            if (scenario === 'optimistic') {
+                // +20% horizon, roughly
+                return clamp(Math.round(baseN * 1.2), minN, maxN);
+            }
+            if (scenario === 'pessimistic') {
+                // -20% horizon, roughly
+                return clamp(Math.round(baseN * 0.8), minN, maxN);
+            }
+            // base
+            return clamp(baseN, minN, maxN);
+        }
+
         // --- CALC PARAMS ---
         function getCalcParams(selected, scenario, ticker) {
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: [] };
@@ -578,11 +595,14 @@
             if (selected === 'Rocket' && scenario === 'optimistic') res.mods = EDGE_MODS.rocket_opt; 
             else if (selected === 'DeepValue' && scenario === 'pessimistic') res.mods = EDGE_MODS.deep_pess; 
             else if (selected === 'Expansion' && scenario === 'optimistic') {
-                // MODIFIED: Expansion optimistic logic
-                // Instead of switching theme to Rocket (too aggressive), stay Expansion but boost metrics
+                // Expansion optimistic logic: stay Expansion but boost metrics
                 res.chain = ['Expansion', 'Expansion', 'Momentum'];
-                res.mods = { pe: 1.3, margin: 1.15, growth: 1.2 }; // +30% PE, +15% margin, +20% growth
+                res.mods = { pe: 1.3, margin: 1.15, growth: 1.2 }; 
                 return res;
+            }
+            else if (selected === 'Expansion' && scenario === 'base') {
+                // Dampen Expansion base growth slightly
+                res.mods = { pe: 1, margin: 1, growth: 0.9 };
             }
             else if (selected === 'Fallen') {
                 if (scenario === 'optimistic') startKey = 'Expansion';
@@ -625,7 +645,7 @@
                 rate = newRate;
                 if (rate < CONFIG.IRR_MIN_RATE || rate > CONFIG.IRR_MAX_RATE) break;
             }
-            return null; // Fallback skipped for brevity, standard case works
+            return null; 
         }
 
         // --- CORE MODEL ---
@@ -651,26 +671,57 @@
 
             const modelYears = Math.max(1, N - CONFIG.ANALYST_YEARS);
             
-            // UPDATED PHASE DURATION LOGIC:
-            // Cap Phase 1 and Phase 2 to max 5 years each to avoid "infinite growth" overvaluation
-            // The rest of the years go to Phase 3 (Terminal/Stable)
-            let p1_dur = Math.min(5, Math.floor(modelYears / 3));
-            let p2_dur = Math.min(5, Math.floor(modelYears / 3));
-            // If modelYears is small (e.g. 3), floor/3 gives 1. min(5,1) = 1. Correct.
-            // If modelYears is large (e.g. 30), floor/3 gives 10. min(5,10) = 5. Correct.
-            
+            // Calculate phase durations
+            let p1_dur = Math.floor(modelYears / 3);
+            let p2_dur = Math.floor(modelYears / 3);
             let p3_dur = modelYears - p1_dur - p2_dur;
+
+            // Cap Phase 1 and Phase 2 to max 5 years each
+            // Additional restriction for high growth profiles
+            const highGrowthProfiles = ['Rocket', 'Expansion'];
+            if (highGrowthProfiles.includes(params.themeKey)) {
+                const maxHighGrowthYears = 5; 
+                const total12 = p1_dur + p2_dur;
+                if (total12 > maxHighGrowthYears) {
+                    const scale = maxHighGrowthYears / total12;
+                    p1_dur = Math.max(1, Math.round(p1_dur * scale));
+                    p2_dur = Math.max(1, Math.round(p2_dur * scale));
+                    p3_dur = modelYears - p1_dur - p2_dur;
+                }
+            } else {
+                // Standard capping
+                p1_dur = Math.min(5, p1_dur);
+                p2_dur = Math.min(5, p2_dur);
+                p3_dur = modelYears - p1_dur - p2_dur;
+            }
             
-            const basePE = t3.pe * mods.pe;
-            const finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
+            // Scenario PE adjustment
+            let scenarioPEAdj = 1.0;
+            if (scenario === 'optimistic') scenarioPEAdj = 1.15;   
+            if (scenario === 'pessimistic') scenarioPEAdj = 0.85;  
+
+            let basePE = t3.pe * mods.pe * scenarioPEAdj;
+            let finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
+
+            // Gordon Growth Check for final PE
+            // MODIFIED: Only apply if PE is NOT overridden (i.e. allow Matrix to be pure)
+            const termGrowth = (t3.growth * mods.growth) / 100;
+            const termPayout = clamp(t3.payout, 0, 100) / 100;
+            const ke = wacc;
+
+            if (overrides.finalPE === undefined && termPayout > 0 && ke > termGrowth + 0.01) {
+                const impliedPE = termPayout / (ke - termGrowth); 
+                if (isFinite(impliedPE) && impliedPE > 0) {
+                    const clippedPE = clamp(impliedPE, 5, 35);  
+                    finalPE = 0.6 * finalPE + 0.4 * clippedPE;
+                }
+            }
 
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
             const eps0 = startRPS * (forecastMargin / 100);
             
             tableData.push({ year: 0, phase: 'Start', rps: startRPS, margin: forecastMargin, eps: eps0, flow: -startPrice, payout: startPayout, isExit: false });
 
-            // ... Calc logic simplified for visual update ... 
-            // Re-using logic from previous step, ensuring consistency
             const y_p1_end = CONFIG.ANALYST_YEARS + p1_dur;
             const y_p2_end = y_p1_end + p2_dur;
 
@@ -681,7 +732,11 @@
             if (params.themeKey !== 'Rocket') {
                 m1 = Math.min(forecastMargin, m1); m2 = Math.min(forecastMargin, m2); m3 = Math.min(forecastMargin, m3);
             }
-            const g1 = t1.growth * mods.growth, g2 = t2.growth * mods.growth, g3 = t3.growth * mods.growth;
+            
+            // Use modified growth for interpolation
+            const g1 = t1.growth * mods.growth;
+            const g2 = t2.growth * mods.growth;
+            const g3 = t3.growth * mods.growth;
 
             for (let i = 1; i <= N; i++) {
                 let g, m, pay, phaseLabel = "Analyst";
@@ -743,7 +798,7 @@
             let upside = null; if (startPrice > 0 && isFinite(fv)) upside = ((fv - startPrice) / startPrice) * 100;
             let spread = null; if (irr != null) spread = (irr - wacc) * 100;
 
-            return { tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE, phaseTargets, themeLCX: METRICS[params.themeKey].lcX };
+            return { tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE, phaseTargets, themeLCX: METRICS[params.themeKey].lcX, inputs };
         }
 
         // --- RENDERING ---
@@ -752,9 +807,24 @@
             safeSetText('disp-years', inputs.N + ' лет');
             
             const irrEl = document.getElementById('res-irr');
-            irrEl.innerText = irr == null ? 'n/a' : (irr * 100).toFixed(1) + '%';
-            irrEl.className = (irr >= wacc) ? "text-5xl font-bold tracking-tight text-green-400" : "text-5xl font-bold tracking-tight text-yellow-400";
             
+            // REFACTORED IRR DISPLAY LOGIC
+            if (irr == null) {
+                irrEl.innerText = 'n/a';
+                irrEl.className = "text-5xl font-bold tracking-tight text-slate-300";
+            } else {
+                irrEl.innerText = (irr * 100).toFixed(1) + '%';
+                // Base color logic
+                irrEl.className = (irr >= wacc) 
+                    ? "text-5xl font-bold tracking-tight text-green-400" 
+                    : "text-5xl font-bold tracking-tight text-yellow-400";
+                
+                // High risk warning override
+                if (irr * 100 > 40 && inputs.startGrowth < 25) {
+                     irrEl.className = "text-5xl font-bold tracking-tight text-orange-400"; 
+                }
+            }
+
             // Upside Color Logic
             const upEl = document.getElementById('res-upside');
             upEl.innerText = upside == null ? 'n/a' : (upside > 0 ? '+' : '') + upside.toFixed(1) + '%';
@@ -1026,6 +1096,7 @@
         }
 
         function setScenario(s) {
+            const themeKey = document.getElementById('theme-selector').value;
             state.scenario = s;
             ['pessimistic', 'base', 'optimistic'].forEach(id => {
                 const btn = document.getElementById('btn-' + id);
@@ -1035,10 +1106,13 @@
                 else if (id === 'optimistic') btn.className = isAct ? "flex-1 py-3 text-xs bg-green-100 text-green-800 border-green-300 rounded-lg shadow-inner font-bold border" : "flex-1 py-3 text-xs border rounded-lg hover:bg-slate-50 transition-all font-medium text-slate-600";
                 else btn.className = isAct ? "flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md font-bold" : "flex-1 py-3 text-xs border rounded-lg hover:bg-slate-50 transition-all font-medium text-slate-600";
             });
-            const params = getCalcParams(document.getElementById('theme-selector').value, s);
+            const params = getCalcParams(themeKey, s);
             const slider = document.getElementById('slider-years');
-            // Allow manual override or auto-set N only if N not custom from Excel
-            if (slider && !state.userSetYears) slider.value = METRICS[params.themeKey].N;
+            // Adjust slider N based on scenario only if user hasn't manually set it
+            if (slider && !state.userSetYears) {
+                const baseN = METRICS[params.themeKey].N || 12;
+                slider.value = getScenarioHorizon(baseN, s);
+            }
             calculate();
         }
 
