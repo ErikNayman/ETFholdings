@@ -443,14 +443,21 @@
 
                 if (rawTicker && rawPrice) {
                     const ticker = String(rawTicker).trim().toUpperCase();
+                    
+                    // Helper to safely parse floats allowing 0
+                    const safeFloat = (val, def) => {
+                        const parsed = parseFloat(val);
+                        return isNaN(parsed) ? def : parsed;
+                    };
+
                     newDB[ticker] = {
                         name: ticker + ' (Excel)',
-                        price: parseFloat(rawPrice) || 0,
-                        rps: parseFloat(getValue('rps')) || 10,
-                        growth: parseFloat(getValue('growth')) || 5,
-                        margin: parseFloat(getValue('margin')) || 10,
-                        wacc: parseFloat(getValue('wacc')) || 8,
-                        payout: parseFloat(getValue('payout')) || 0,
+                        price: safeFloat(rawPrice, 0),
+                        rps: safeFloat(getValue('rps'), 10),
+                        growth: safeFloat(getValue('growth'), 5),
+                        margin: safeFloat(getValue('margin'), 10),
+                        wacc: safeFloat(getValue('wacc'), 8), // Now correctly handles 0 or 3
+                        payout: safeFloat(getValue('payout'), 0),
                         profile: normalizeTheme(getValue('theme')) 
                     };
                     count++;
