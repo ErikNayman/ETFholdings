@@ -107,10 +107,10 @@
                     <select id="theme-selector" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 font-medium mb-3">
                         <option value="Rocket">Rocket Growth (Startups)</option>
                         <option value="Expansion">Expansion Compounder (NVDA)</option>
-                        <option value="IndexTech">Index Tech / Growth (QQQ)</option> <!-- NEW -->
+                        <option value="IndexTech">Index Tech / Growth (QQQ)</option>
                         <option value="Momentum">Quality Momentum (AAPL)</option>
                         <option value="Steady">Steady Compounder (SPY)</option>
-                        <option value="IndexValue">Index Value / Blue Chip (DIA)</option> <!-- NEW -->
+                        <option value="IndexValue">Index Value / Blue Chip (DIA)</option>
                         <option value="Dividend">Dividend Stability (JPM)</option>
                         <option value="Fallen">Fallen Angel (PYPL)</option>
                         <option value="DeepValue">Deep Value (GM)</option>
@@ -413,15 +413,17 @@
 
             let headerRowIndex = -1;
             let colMap = {}; 
+            // IMPROVED KEYMAP: Removed ambiguous short keys like 'r', 'g'
+            // Added Russian terms for better detection
             const keyMap = {
-                ticker: ['ticker', 'symbol', 'code'],
-                price: ['price', 'close', 'last'],
-                rps: ['rps', 'revenue per share', 'sales per share'],
-                growth: ['growth', 'growth %', 'g'],
-                margin: ['margin', 'net margin', 'margin %'],
-                wacc: ['wacc', 'cost of capital', 'r'],
-                payout: ['payout', 'payout ratio', 'div'],
-                theme: ['theme', 'profile', 'strategy']
+                ticker: ['ticker', 'symbol', 'code', 'тикер'],
+                price: ['price', 'close', 'last', 'цена'],
+                rps: ['rps', 'revenue', 'sales', 'выручка'], // 'revenue' is safer/broader
+                growth: ['growth', 'cagr', 'рост'], 
+                margin: ['margin', 'маржа'],
+                wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
+                payout: ['payout', 'dividen', 'дивиден'], // 'dividen' matches dividend, dividends
+                theme: ['theme', 'profile', 'strategy', 'тема']
             };
 
             for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -468,7 +470,7 @@
                         rps: safeFloat(getValue('rps'), 10),
                         growth: safeFloat(getValue('growth'), 5),
                         margin: safeFloat(getValue('margin'), 10),
-                        wacc: safeFloat(getValue('wacc'), 8), // Now correctly handles 0 or 3
+                        wacc: safeFloat(getValue('wacc'), 8), 
                         payout: safeFloat(getValue('payout'), 0),
                         profile: normalizeTheme(getValue('theme')) 
                     };
