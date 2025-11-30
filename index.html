@@ -726,10 +726,20 @@
         function renderSummary(result, inputs) {
             const { irr, wacc, fv, upside, spread, finalPE } = result;
             safeSetText('disp-years', inputs.N + ' лет');
+            
             const irrEl = document.getElementById('res-irr');
             irrEl.innerText = irr == null ? 'n/a' : (irr * 100).toFixed(1) + '%';
             irrEl.className = (irr >= wacc) ? "text-5xl font-bold tracking-tight text-green-400" : "text-5xl font-bold tracking-tight text-yellow-400";
-            safeSetText('res-upside', upside == null ? 'n/a' : (upside > 0 ? '+' : '') + upside.toFixed(1) + '%');
+            
+            // Upside Color Logic
+            const upEl = document.getElementById('res-upside');
+            upEl.innerText = upside == null ? 'n/a' : (upside > 0 ? '+' : '') + upside.toFixed(1) + '%';
+            if (upside != null && upside < 0) {
+                upEl.className = "text-xl font-bold text-red-400";
+            } else {
+                upEl.className = "text-xl font-bold text-green-400";
+            }
+
             safeSetText('res-fv', formatCurrency(fv));
             safeSetText('res-exit-pe', isFinite(finalPE) ? finalPE.toFixed(1) + 'x' : '--x');
         }
