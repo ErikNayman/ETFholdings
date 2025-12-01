@@ -285,6 +285,12 @@
 
     <script>
         // --- CONFIGURATION ---
+        // NEW: TAIL_PENALTY added as requested
+        const TAIL_PENALTY = {
+            START_YEAR: 15,   // After year 15, risk is considered higher
+            EXTRA_DR: 0.01    // +1% discount rate penalty for far-future years
+        };
+
         const CONFIG = {
             ANALYST_YEARS: 2,
             DEFAULT_WACC: 0.08,
@@ -613,6 +619,7 @@
 
         // --- CALC PARAMS ---
         function getCalcParams(selected, scenario, ticker) {
+            // CHANGED: IDEA 1 - No theme jumping, always selected theme
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: BASE_CHAINS[selected] || ['Steady', 'Steady', 'Steady'] };
             
             // --- INDEX EXCEPTIONS ---
@@ -630,20 +637,18 @@
             if (selected === 'Expansion') {
                 if (scenario === 'optimistic') {
                     res.chain = ['Expansion', 'Expansion', 'Momentum']; 
-                    res.mods = { pe: 1.2, margin: 1.05, growth: 1.15 };
+                    res.mods = { pe: 1.2, margin: 1.05, growth: 1.1 }; // Slightly moderated growth
                 } else if (scenario === 'pessimistic') {
-                    res.mods = { pe: 0.9, margin: 0.95, growth: 0.85 };
-                } else {
-                     res.mods = { pe: 1, margin: 1, growth: 0.95 }; 
-                }
+                    res.mods = { pe: 0.9, margin: 0.95, growth: 0.8 };
+                } 
                 return res;
             }
 
             // --- GENERAL MODIFIERS ---
             if (scenario === 'optimistic') {
-                res.mods = { pe: 1.15, margin: 1.05, growth: 1.15 };
+                res.mods = { pe: 1.1, margin: 1.03, growth: 1.1 };
             } else if (scenario === 'pessimistic') {
-                res.mods = { pe: 0.85, margin: 0.95, growth: 0.85 };
+                res.mods = { pe: 0.9, margin: 0.97, growth: 0.85 };
             }
 
             return res;
@@ -688,10 +693,11 @@
             const t2 = METRICS[chainKeys[1]];
             const t3 = METRICS[chainKeys[2]];
 
+            // --- IDEA 2: BLENDING CURRENT vs TARGET (Scenario weighted for MID only) ---
             const WEIGHTS = {
-                optimistic: { mid: 0.3, term: 0.6 }, 
-                base:       { mid: 0.5, term: 0.8 },
-                pessimistic:{ mid: 0.8, term: 1.0 }  
+                optimistic: { mid: 0.3 }, 
+                base:       { mid: 0.5 },
+                pessimistic:{ mid: 0.8 }  
             };
             const w = WEIGHTS[scenario] || WEIGHTS.base;
             const blend = (curr, target, weight) => curr * (1 - weight) + target * weight;
@@ -699,12 +705,18 @@
             const rawG = (m) => m.growth * mods.growth;
             const rawM = (m) => m.margin * mods.margin;
             
+            // COMMON TERMINAL FOR ALL SCENARIOS (To stabilize tail)
+            const TERM_BLEND = 0.7; // How strong we pull to profile
+            const rawGBase = (m) => m.growth; // Unmodified profile stats
+            const rawMBase = (m) => m.margin;
+
             const targetTerm = {
-                g: blend(startGrowth, rawG(t3), w.term),
-                m: blend(forecastMargin, rawM(t3), w.term),
-                p: blend(startPayout, t3.payout, w.term)
+                g: blend(startGrowth, rawGBase(t3), TERM_BLEND),
+                m: blend(forecastMargin, rawMBase(t3), TERM_BLEND),
+                p: blend(startPayout, t3.payout, TERM_BLEND)
             };
 
+            // Scenario-dependent MID
             const targetMid = {
                 g: blend(startGrowth, rawG(t1), w.mid),
                 m: blend(forecastMargin, rawM(t1), w.mid),
@@ -737,11 +749,12 @@
             }
             let p3_dur = modelYears - p1_dur - p2_dur;
 
+            // IDEA: Weaken PE influence
             let scenarioPEAdj = 1.0;
-            if (scenario === 'optimistic') scenarioPEAdj = 1.15;   
-            if (scenario === 'pessimistic') scenarioPEAdj = 0.85;  
+            if (scenario === 'optimistic') scenarioPEAdj = 1.05;   
+            if (scenario === 'pessimistic') scenarioPEAdj = 0.95;  
             
-            const basePE = t3.pe * mods.pe * scenarioPEAdj;
+            const basePE = t3.pe * scenarioPEAdj; // Removed mods.pe double count
             let finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
 
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
@@ -752,28 +765,24 @@
             const y_p1_end = CONFIG.ANALYST_YEARS + p1_dur;
             const y_p2_end = y_p1_end + p2_dur;
 
+            // --- DISCOUNTING SETUP with TAIL PENALTY ---
+            let df = 1.0;
+
             for (let i = 1; i <= N; i++) {
                 let g, m, pay, phaseLabel = "Analyst";
 
                 if (['SPY', 'QQQ', 'DIA'].includes(state.currentTicker)) {
                      phaseLabel = "Index Flow";
-                     
+                     // Simplify index logic (linear drift)
                      const progressG = Math.min(1, (i - 1) / 10); 
                      const progressP = Math.min(1, (i - 1) / 15); 
-                     
-                     const termG = 6.5; 
-                     const termP = 40.0; 
+                     const termG = 6.5; const termP = 40.0; 
                      
                      g = startGrowth - (startGrowth - termG) * progressG;
                      m = forecastMargin; 
                      pay = startPayout - (startPayout - termP) * progressP;
 
                      phaseTargets.term = { g: termG, m: forecastMargin, p: termP };
-                     phaseTargets.mid = { 
-                         g: startGrowth - (startGrowth - termG) * 0.5, 
-                         m: forecastMargin, 
-                         p: startPayout - (startPayout - termP) * 0.5 
-                     };
                 } 
                 else {
                     if (i <= CONFIG.ANALYST_YEARS) {
@@ -806,7 +815,14 @@
                 let eps = rps * (m / 100);
                 let div = (eps > 0 ? eps : 0) * (pay / 100);
                 
-                pvDiv += div / Math.pow(1 + wacc, i);
+                // Apply Tail Penalty
+                let effectiveRate = wacc;
+                if (i > TAIL_PENALTY.START_YEAR) {
+                    effectiveRate += TAIL_PENALTY.EXTRA_DR;
+                }
+                df *= (1 + effectiveRate);
+                
+                pvDiv += div / df;
                 irrStream.push(div);
                 
                 tableData.push({ year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false });
@@ -830,7 +846,10 @@
                     finalPE: finalPE
                 });
             }
-            const pvExit = exitPrice / Math.pow(1 + wacc, N);
+            
+            // Use accumulated discount factor for exit
+            const pvExit = exitPrice / df;
+            
             const fv = pvDiv + pvExit;
             const irr = calculateIRR(irrStream);
             let upside = null; if (startPrice > 0 && isFinite(fv)) upside = ((fv - startPrice) / startPrice) * 100;
