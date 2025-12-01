@@ -101,7 +101,7 @@
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="text-sm font-bold text-slate-700 uppercase">1. Параметры Входа</h3>
                         <div class="flex items-center gap-2">
-                            <!-- NEW: RESET BUTTON -->
+                            <!-- RESET BUTTON -->
                             <button onclick="resetToDefaults()" id="btn-reset" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors hidden" title="Вернуть исходные значения">
                                 ↺ Сброс
                             </button>
@@ -285,10 +285,9 @@
 
     <script>
         // --- CONFIGURATION ---
-        // NEW: TAIL_PENALTY added as requested
         const TAIL_PENALTY = {
-            START_YEAR: 15,   // After year 15, risk is considered higher
-            EXTRA_DR: 0.01    // +1% discount rate penalty for far-future years
+            START_YEAR: 15,   
+            EXTRA_DR: 0.01    
         };
 
         const CONFIG = {
@@ -302,7 +301,7 @@
 
         const THEME_ORDER = ['Rocket', 'Expansion', 'IndexTech', 'Momentum', 'Steady', 'IndexValue', 'Dividend', 'DeepValue', 'Fallen'];
         
-        // --- DEMO DATABASE (UPDATED WITH PROFILES) ---
+        // --- DEMO DATABASE ---
         const DEMO_DB = {
             'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 8.0, payout: 27.1, profile: 'Steady' }, 
             'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 11.0, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech' }, 
@@ -324,7 +323,7 @@
             'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 21.0, pe: 25.0, payout: 15, N: 15, lcX: 40 }, 
             'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 27.8, pe: 22.7, payout: 50, N: 12, lcX: 55 }, 
             'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12, lcX: 65 }, 
-            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5, pe: 19.5, payout: 40, N: 12, lcX: 75 }, 
+            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5, pe: 19.5, payout: 40, N: 12, lcX: 75 },
             'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8, pe: 13.9, payout: 75, N: 9,  lcX: 85 },
             'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.3, pe: 10.9, payout: 50, N: 6,  lcX: 95 },
             'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 6.5,  pe: 11.8, payout: 30, N: 9,  lcX: 90 } 
@@ -333,7 +332,7 @@
         const BASE_CHAINS = {
             'Rocket':    ['Rocket', 'Expansion', 'Momentum'],
             'Expansion': ['Expansion', 'Momentum', 'Steady'],
-            'IndexTech': ['IndexTech', 'Momentum', 'Steady'], 
+            'IndexTech': ['IndexTech', 'Momentum', 'Steady'],
             'Momentum':  ['Momentum', 'Steady', 'Dividend'],
             'Steady':    ['Steady', 'Dividend', 'DeepValue'],
             'IndexValue':['IndexValue', 'Dividend', 'DeepValue'],
@@ -619,7 +618,6 @@
 
         // --- CALC PARAMS ---
         function getCalcParams(selected, scenario, ticker) {
-            // CHANGED: IDEA 1 - No theme jumping, always selected theme
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: BASE_CHAINS[selected] || ['Steady', 'Steady', 'Steady'] };
             
             // --- INDEX EXCEPTIONS ---
@@ -693,7 +691,6 @@
             const t2 = METRICS[chainKeys[1]];
             const t3 = METRICS[chainKeys[2]];
 
-            // --- IDEA 2: BLENDING CURRENT vs TARGET (Scenario weighted for MID only) ---
             const WEIGHTS = {
                 optimistic: { mid: 0.3 }, 
                 base:       { mid: 0.5 },
@@ -705,7 +702,7 @@
             const rawG = (m) => m.growth * mods.growth;
             const rawM = (m) => m.margin * mods.margin;
             
-            // COMMON TERMINAL FOR ALL SCENARIOS (To stabilize tail)
+            // COMMON TERMINAL FOR ALL SCENARIOS
             const isRocket = (userThemeKey === 'Rocket');
             const t3Effective = isRocket ? METRICS['Expansion'] : t3;
             
@@ -716,23 +713,14 @@
             const targetTerm = {
                 g: blend(startGrowth, rawGBase(t3Effective), TERM_BLEND),
                 m: blend(forecastMargin, rawMBase(t3Effective), TERM_BLEND),
-                // MODIFIED: For Rocket, ignore startPayout(0) in terminal, use profile fully
-                p: isRocket 
-                    ? t3Effective.payout 
-                    : blend(startPayout, t3Effective.payout, TERM_BLEND)
+                p: isRocket ? t3Effective.payout : blend(startPayout, t3Effective.payout, TERM_BLEND)
             };
 
             // Scenario-dependent MID
             const targetMid = {
                 g: blend(startGrowth, rawG(t1), w.mid),
                 m: blend(forecastMargin, rawM(t1), w.mid),
-                
-                // MODIFIED: For Rocket, target Expansion payout (15%) DIRECTLY
-                // Do not blend with current 0%, otherwise it stays too low (~7%)
-                p: (isRocket
-                    ? METRICS['Expansion'].payout
-                    : blend(startPayout, t1.payout, w.mid)
-                )
+                p: (isRocket ? METRICS['Expansion'].payout : blend(startPayout, t1.payout, w.mid))
             };
 
             const phaseTargets = {
@@ -761,12 +749,18 @@
             }
             let p3_dur = modelYears - p1_dur - p2_dur;
 
-            // IDEA: Weaken PE influence
+            // --- EXIT P/E: ANCHORED TO PROFILE ---
+            const themeMetrics = METRICS[params.themeKey] || METRICS['Steady'];
+            let stylePE = themeMetrics.pe;
+            if (params.themeKey === 'Rocket') {
+                stylePE = METRICS['Expansion'].pe; // Rocket sells at Expansion multiple
+            }
+
             let scenarioPEAdj = 1.0;
             if (scenario === 'optimistic') scenarioPEAdj = 1.05;   
-            if (scenario === 'pessimistic') scenarioPEAdj = 0.95;  
+            else if (scenario === 'pessimistic') scenarioPEAdj = 0.95;  
             
-            const basePE = t3.pe * scenarioPEAdj; // Removed mods.pe double count
+            const basePE = stylePE * scenarioPEAdj;
             let finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
 
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
