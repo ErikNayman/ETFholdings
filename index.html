@@ -637,9 +637,9 @@
             if (selected === 'Expansion') {
                 if (scenario === 'optimistic') {
                     res.chain = ['Expansion', 'Expansion', 'Momentum']; 
-                    res.mods = { pe: 1.2, margin: 1.05, growth: 1.1 }; // Slightly moderated growth
+                    res.mods = { pe: 1.2, margin: 1.05, growth: 1.15 };
                 } else if (scenario === 'pessimistic') {
-                    res.mods = { pe: 0.9, margin: 0.95, growth: 0.8 };
+                    res.mods = { pe: 0.9, margin: 0.95, growth: 0.85 };
                 } 
                 return res;
             }
@@ -782,16 +782,23 @@
 
                 if (['SPY', 'QQQ', 'DIA'].includes(state.currentTicker)) {
                      phaseLabel = "Index Flow";
-                     // Simplify index logic (linear drift)
+                     
                      const progressG = Math.min(1, (i - 1) / 10); 
                      const progressP = Math.min(1, (i - 1) / 15); 
-                     const termG = 6.5; const termP = 40.0; 
+                     
+                     const termG = 6.5; 
+                     const termP = 40.0; 
                      
                      g = startGrowth - (startGrowth - termG) * progressG;
                      m = forecastMargin; 
                      pay = startPayout - (startPayout - termP) * progressP;
 
                      phaseTargets.term = { g: termG, m: forecastMargin, p: termP };
+                     phaseTargets.mid = { 
+                         g: startGrowth - (startGrowth - termG) * 0.5, 
+                         m: forecastMargin, 
+                         p: startPayout - (startPayout - termP) * 0.5 
+                     };
                 } 
                 else {
                     if (i <= CONFIG.ANALYST_YEARS) {
