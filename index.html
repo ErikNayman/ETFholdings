@@ -706,21 +706,30 @@
             const rawM = (m) => m.margin * mods.margin;
             
             // COMMON TERMINAL FOR ALL SCENARIOS (To stabilize tail)
+            // MODIFIED: Rocket exception for Terminal phase
+            const isRocket = (userThemeKey === 'Rocket');
+            const t3Effective = isRocket ? METRICS['Expansion'] : t3;
+            
             const TERM_BLEND = 0.7; // How strong we pull to profile
             const rawGBase = (m) => m.growth; // Unmodified profile stats
             const rawMBase = (m) => m.margin;
 
             const targetTerm = {
-                g: blend(startGrowth, rawGBase(t3), TERM_BLEND),
-                m: blend(forecastMargin, rawMBase(t3), TERM_BLEND),
-                p: blend(startPayout, t3.payout, TERM_BLEND)
+                g: blend(startGrowth, rawGBase(t3Effective), TERM_BLEND),
+                m: blend(forecastMargin, rawMBase(t3Effective), TERM_BLEND),
+                p: blend(startPayout, t3Effective.payout, TERM_BLEND)
             };
 
             // Scenario-dependent MID
             const targetMid = {
                 g: blend(startGrowth, rawG(t1), w.mid),
                 m: blend(forecastMargin, rawM(t1), w.mid),
-                p: blend(startPayout, t1.payout, w.mid)
+                
+                // FIX: For Rocket, target Expansion payout in mid phase
+                p: (userThemeKey === 'Rocket'
+                    ? blend(startPayout, METRICS['Expansion'].payout, w.mid)
+                    : blend(startPayout, t1.payout, w.mid)
+                )
             };
 
             const phaseTargets = {
