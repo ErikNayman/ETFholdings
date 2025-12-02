@@ -52,7 +52,7 @@
             <div>
                 <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Lifecycle Engine</h1>
                 <p class="text-sm text-slate-500">
-                    Оценка стоимости, сценарный анализ и жизненный цикл компании.
+                    Оценка стоимости P/S Anchor & Lifecycle.
                 </p>
             </div>
             <div class="text-right">
@@ -83,7 +83,7 @@
                         <div class="hidden group-hover:block absolute top-full left-0 w-full bg-slate-800 text-slate-200 text-[10px] p-3 rounded mt-1 z-20 shadow-xl border border-slate-600 leading-relaxed">
                             <strong>Нужные колонки:</strong><br>
                             Ticker, Price, RPS, Growth, Margin, WACC, Payout<br>
-                            <em class="text-slate-400">Опционально: Theme, N (срок)</em>
+                            <em class="text-slate-400">Опционально: Theme, N, PE, PS</em>
                         </div>
                     </div>
                     <div id="upload-error" class="text-xs bg-red-500 text-white p-2 rounded mb-2 hidden"></div>
@@ -101,7 +101,6 @@
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="text-sm font-bold text-slate-700 uppercase">1. Параметры Входа</h3>
                         <div class="flex items-center gap-2">
-                            <!-- RESET BUTTON -->
                             <button onclick="resetToDefaults()" id="btn-reset" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors hidden" title="Вернуть исходные значения">
                                 ↺ Сброс
                             </button>
@@ -188,7 +187,13 @@
                     
                     <div class="mt-3 pt-2 border-t border-slate-600 text-[10px] text-slate-400 flex justify-between">
                         <span>Fair Value: <span id="res-fv" class="text-white font-bold">$---</span></span>
-                        <span>Exit P/E: <span id="res-exit-pe" class="text-white font-bold">--x</span></span>
+                        <div class="text-right">
+                            <div class="text-[9px] text-slate-500">EXIT MULTIPLES</div>
+                            <div>
+                                <span class="text-slate-400 mr-1">P/E:</span><span id="res-exit-pe" class="text-white font-bold mr-2">--x</span>
+                                <span class="text-slate-400 mr-1">P/S:</span><span id="res-exit-ps" class="text-white font-bold">--x</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -303,32 +308,34 @@
         
         // --- DEMO DATABASE ---
         const DEMO_DB = {
-            'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 8.0, payout: 27.1, profile: 'Steady' }, 
-            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 11.0, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech' }, 
-            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 6.5, margin: 12.5, wacc: 7.5, payout: 35, profile: 'IndexValue' }, 
-            'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15 },
-            'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2 },
-            'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0 },
-            'MSFT': { name: 'Microsoft', price: 420.0, rps: 31.5, growth: 12.0, margin: 36.0, wacc: 8.0, payout: 25 },
-            'AMZN': { name: 'Amazon', price: 178.0, rps: 55.0, growth: 11.0, margin: 6.5, wacc: 9.0, payout: 0 },
-            'GOOGL': { name: 'Alphabet', price: 173.0, rps: 24.0, growth: 10.0, margin: 24.0, wacc: 8.5, payout: 10 }
+            'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 8.0, payout: 27.1, profile: 'Steady', ps: 3.40, pe: 22.8 }, 
+            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 11.0, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech', ps: 6.2, pe: 31.5 }, 
+            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 6.5, margin: 12.5, wacc: 7.5, payout: 35, profile: 'IndexValue', ps: 2.8, pe: 22.0 }, 
+            'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15, ps: 7.7, pe: 29.0 },
+            'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2, ps: 35.0, pe: 65.0 },
+            'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0, ps: 5.8, pe: 55.0 },
+            'MSFT': { name: 'Microsoft', price: 420.0, rps: 31.5, growth: 12.0, margin: 36.0, wacc: 8.0, payout: 25, ps: 13.0, pe: 36.0 },
+            'AMZN': { name: 'Amazon', price: 178.0, rps: 55.0, growth: 11.0, margin: 6.5, wacc: 9.0, payout: 0, ps: 3.2, pe: 45.0 },
+            'GOOGL': { name: 'Alphabet', price: 173.0, rps: 24.0, growth: 10.0, margin: 24.0, wacc: 8.5, payout: 10, ps: 6.5, pe: 24.0 }
         };
 
         // Current Active DB
         let GLOBAL_DB = { ...DEMO_DB };
 
+        // METRICS with P/S field added
         const METRICS = {
-            'Rocket':    { name: 'Rocket',    growth: 40,    margin: 5,    pe: 75,  payout: 0,  N: 20, lcX: 15 }, 
-            'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.7, pe: 24.3, payout: 15, N: 15, lcX: 30 }, 
-            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 21.0, pe: 25.0, payout: 15, N: 15, lcX: 40 }, 
-            'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 27.8, pe: 22.7, payout: 50, N: 12, lcX: 55 }, 
-            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5, pe: 21.6, payout: 45, N: 12, lcX: 65 }, 
-            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5, pe: 19.5, payout: 40, N: 12, lcX: 75 },
-            'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8, pe: 13.9, payout: 75, N: 9,  lcX: 85 },
-            'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.3, pe: 10.9, payout: 50, N: 6,  lcX: 95 },
-            'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 6.5,  pe: 11.8, payout: 30, N: 9,  lcX: 90 } 
+            'Rocket':    { name: 'Rocket',    growth: 40,    margin: 3.8,   pe: 407.9, ps: 15.39, payout: 0,  N: 20, lcX: 15 }, 
+            'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.9,  pe: 24.0,  ps: 8.13,  payout: 15, N: 15, lcX: 30 }, 
+            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 26.0,  pe: 22.1,  ps: 5.73,  payout: 15, N: 15, lcX: 40 }, 
+            'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 26.0,  pe: 22.1,  ps: 5.73,  payout: 50, N: 12, lcX: 55 }, 
+            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 12.5,  pe: 22.2,  ps: 2.78,  payout: 45, N: 12, lcX: 65 }, 
+            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.1,  pe: 11.7,  ps: 1.42,  payout: 40, N: 12, lcX: 75 }, 
+            'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8,  pe: 13.5,  ps: 2.00,  payout: 75, N: 9,  lcX: 85 },
+            'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.1,  pe: 11.7,  ps: 1.42,  payout: 50, N: 6,  lcX: 95 },
+            'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 7.5,   pe: 14.0,  ps: 1.05,  payout: 30, N: 9,  lcX: 90 } 
         };
 
+        // ... (Chains remain same)
         const BASE_CHAINS = {
             'Rocket':    ['Rocket', 'Expansion', 'Momentum'],
             'Expansion': ['Expansion', 'Momentum', 'Steady'],
@@ -373,6 +380,7 @@
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
+                    
                     let successCount = 0;
                     for (const sheetName of workbook.SheetNames) {
                         const worksheet = workbook.Sheets[sheetName];
@@ -383,6 +391,7 @@
                             successCount += res.count;
                         }
                     }
+
                     if (successCount > 0) {
                         document.getElementById('db-status').innerText = `Excel (${successCount} шт.)`;
                         document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
@@ -391,6 +400,7 @@
                         errEl.innerText = "Не удалось найти данные. Проверьте заголовки (Ticker, Price...).";
                         errEl.classList.remove('hidden');
                     }
+
                 } catch (err) {
                     console.error(err);
                     errEl.innerText = "Ошибка чтения файла.";
@@ -435,7 +445,10 @@
                 wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
                 payout: ['payout', 'dividen', 'дивиден'], 
                 theme: ['theme', 'profile', 'strategy', 'тема'],
-                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon']
+                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon'],
+                // NEW COLUMNS:
+                pe: ['pe', 'p/e', 'forward pe', 'pe_curr', 'p/e ratio'],
+                ps: ['ps', 'p/s', 'forward ps', 'ps_curr', 'p/s ratio']
             };
 
             for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -474,6 +487,7 @@
                         return isNaN(parsed) ? def : parsed;
                     };
                     const nVal = safeFloat(getValue('n'), null);
+                    
                     newDB[ticker] = {
                         name: ticker + ' (Excel)',
                         price: safeFloat(rawPrice, 0),
@@ -483,7 +497,10 @@
                         wacc: safeFloat(getValue('wacc'), 8), 
                         payout: safeFloat(getValue('payout'), 0),
                         profile: normalizeTheme(getValue('theme')),
-                        n_term: nVal
+                        n_term: nVal,
+                        // Store PE and PS if found
+                        pe: safeFloat(getValue('pe'), null),
+                        ps: safeFloat(getValue('ps'), null)
                     };
                     count++;
                 }
@@ -493,12 +510,12 @@
 
         // --- AUTO-PROFILE ---
         function detectProfile(data) {
+            // ... existing heuristic ...
             const g = data.growth;
             const m = data.margin;
             const p = data.payout;
             if (data.name && data.name.includes('Nasdaq')) return 'IndexTech';
             if (data.name && data.name.includes('Dow')) return 'IndexValue';
-            
             if (g > 30) return 'Rocket';
             if (g > 15 && m > 20) return 'Expansion';
             if (g > 10 && m > 15 && p > 10) return 'Momentum';
@@ -557,19 +574,17 @@
         }
         
         function resetToDefaults() {
+            // ... (existing reset logic) ...
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
-            
             document.getElementById('inp-price').value = data.price;
             document.getElementById('inp-rps').value = data.rps;
             document.getElementById('inp-growth').value = data.growth;
             document.getElementById('inp-forecast-margin').value = data.margin;
             document.getElementById('inp-wacc').value = data.wacc;
             document.getElementById('inp-payout').value = data.payout;
-            
             const profile = data.profile || detectProfile(data);
             document.getElementById('theme-selector').value = profile;
-            
             const slider = document.getElementById('slider-years');
             if (data.n_term && data.n_term > 0) {
                 const nTerm = Math.min(Math.max(data.n_term, 5), 35);
@@ -582,12 +597,10 @@
                 state.userSetYears = false; 
                 state.maxNFromFile = null;
             }
-            
             const panel = document.getElementById('inputs-panel');
             panel.classList.remove('flash-update');
             void panel.offsetWidth; 
             panel.classList.add('flash-update');
-            
             state.scenario = 'base';
             setScenario('base');
         }
@@ -598,29 +611,69 @@
         function formatPercent(n) { return n == null || !isFinite(n) ? '--%' : n.toFixed(1) + '%'; }
         function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
-        // --- SCENARIO HORIZON HELPER ---
+        // --- SCENARIO HELPER (NEW LOGIC FOR THEME SHIFTING) ---
+        function getTerminalParams(baseTheme, scenario, ticker) {
+            const themeIndex = THEME_ORDER.indexOf(baseTheme);
+            let targetThemeKey = baseTheme;
+            let scenarioAdj = 1.0;
+
+            // Base Case
+            if (scenario === 'base') {
+                return { themeKey: baseTheme, adj: 1.0 };
+            }
+
+            // Pessimistic Case (Shift Right -> Value/Decline)
+            if (scenario === 'pessimistic') {
+                // Exceptions
+                if (baseTheme === 'Fallen' || baseTheme === 'DeepValue') {
+                    return { themeKey: baseTheme, adj: 0.9 }; // Stay, discount
+                }
+                // General shift right
+                if (themeIndex !== -1 && themeIndex < THEME_ORDER.length - 1) {
+                    targetThemeKey = THEME_ORDER[themeIndex + 1];
+                }
+                return { themeKey: targetThemeKey, adj: 1.0 };
+            }
+
+            // Optimistic Case (Shift Left -> Growth/Quality)
+            if (scenario === 'optimistic') {
+                // Exceptions
+                if (baseTheme === 'Rocket') {
+                    return { themeKey: 'Rocket', adj: 1.15 }; // Stay, premium
+                }
+                if (baseTheme === 'Fallen') {
+                    return { themeKey: 'Steady', adj: 1.0 }; // Exception rule
+                }
+                // General shift left
+                if (themeIndex > 0) {
+                    targetThemeKey = THEME_ORDER[themeIndex - 1];
+                }
+                // Special expansion logic (safety)
+                if (baseTheme === 'Expansion' && targetThemeKey === 'Rocket') {
+                    // If user prefers Expansion stays expansion in optimistic
+                    // But request says shift left generally. Let's allow shift but clamp later if needed.
+                    // For now following the "Shift Left" rule as requested.
+                }
+                return { themeKey: targetThemeKey, adj: 1.0 };
+            }
+            
+            return { themeKey: baseTheme, adj: 1.0 };
+        }
+
         function getScenarioHorizon(baseN, scenario) {
             const minN = 5;
             let maxN = 30; 
-
-            if (state.maxNFromFile != null) {
-                maxN = Math.min(maxN, state.maxNFromFile);
-            }
-
-            if (scenario === 'optimistic') {
-                return clamp(Math.round(baseN * 1.2), minN, maxN);
-            }
-            if (scenario === 'pessimistic') {
-                return clamp(Math.round(baseN * 0.8), minN, maxN);
-            }
+            if (state.maxNFromFile != null) maxN = Math.min(maxN, state.maxNFromFile);
+            if (scenario === 'optimistic') return clamp(Math.round(baseN * 1.2), minN, maxN);
+            if (scenario === 'pessimistic') return clamp(Math.round(baseN * 0.8), minN, maxN);
             return clamp(baseN, minN, maxN);
         }
 
-        // --- CALC PARAMS ---
+        // --- CALC PARAMS (Mainly for flow chain) ---
         function getCalcParams(selected, scenario, ticker) {
+            // Keeps existing flow logic
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: BASE_CHAINS[selected] || ['Steady', 'Steady', 'Steady'] };
             
-            // --- INDEX EXCEPTIONS ---
             if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
                 if (ticker === 'QQQ') res.chain = ['IndexTech', 'IndexTech', 'Steady'];
                 else if (ticker === 'DIA') res.chain = ['IndexValue', 'IndexValue', 'IndexValue'];
@@ -631,7 +684,6 @@
                 return res;
             }
 
-            // --- EXPANSION EXCEPTION ---
             if (selected === 'Expansion') {
                 if (scenario === 'optimistic') {
                     res.chain = ['Expansion', 'Expansion', 'Momentum']; 
@@ -642,13 +694,11 @@
                 return res;
             }
 
-            // --- GENERAL MODIFIERS ---
             if (scenario === 'optimistic') {
                 res.mods = { pe: 1.1, margin: 1.03, growth: 1.1 };
             } else if (scenario === 'pessimistic') {
                 res.mods = { pe: 0.9, margin: 0.97, growth: 0.85 };
             }
-
             return res;
         }
 
@@ -659,7 +709,6 @@
             if (!hasPos || !hasNeg) return null; 
             const maxIter = CONFIG.IRR_MAX_ITER, tol = CONFIG.IRR_TOL;
             let rate = 0.1;
-
             for (let i = 0; i < maxIter; i++) {
                 let npv = 0, d_npv = 0;
                 const onePlus = 1 + rate;
@@ -691,21 +740,15 @@
             const t2 = METRICS[chainKeys[1]];
             const t3 = METRICS[chainKeys[2]];
 
-            const WEIGHTS = {
-                optimistic: { mid: 0.3 }, 
-                base:       { mid: 0.5 },
-                pessimistic:{ mid: 0.8 }  
-            };
+            const WEIGHTS = { optimistic: { mid: 0.3 }, base: { mid: 0.5 }, pessimistic:{ mid: 0.8 } };
             const w = WEIGHTS[scenario] || WEIGHTS.base;
             const blend = (curr, target, weight) => curr * (1 - weight) + target * weight;
 
             const rawG = (m) => m.growth * mods.growth;
             const rawM = (m) => m.margin * mods.margin;
             
-            // COMMON TERMINAL FOR ALL SCENARIOS
             const isRocket = (userThemeKey === 'Rocket');
             const t3Effective = isRocket ? METRICS['Expansion'] : t3;
-            
             const TERM_BLEND = 0.7; 
             const rawGBase = (m) => m.growth; 
             const rawMBase = (m) => m.margin;
@@ -715,22 +758,15 @@
                 m: blend(forecastMargin, rawMBase(t3Effective), TERM_BLEND),
                 p: isRocket ? t3Effective.payout : blend(startPayout, t3Effective.payout, TERM_BLEND)
             };
-
-            // Scenario-dependent MID
             const targetMid = {
                 g: blend(startGrowth, rawG(t1), w.mid),
                 m: blend(forecastMargin, rawM(t1), w.mid),
                 p: (isRocket ? METRICS['Expansion'].payout : blend(startPayout, t1.payout, w.mid))
             };
 
-            const phaseTargets = {
-                current: { g: startGrowth, m: forecastMargin, p: startPayout },
-                mid: targetMid,
-                term: targetTerm
-            };
+            const phaseTargets = { current: { g: startGrowth, m: forecastMargin, p: startPayout }, mid: targetMid, term: targetTerm };
 
             const modelYears = Math.max(1, N - CONFIG.ANALYST_YEARS);
-            
             let p1_dur = Math.floor(modelYears / 3);
             let p2_dur = Math.floor(modelYears / 3);
             
@@ -749,55 +785,27 @@
             }
             let p3_dur = modelYears - p1_dur - p2_dur;
 
-            // --- EXIT P/E: ANCHORED TO PROFILE ---
-            const themeMetrics = METRICS[params.themeKey] || METRICS['Steady'];
-            let stylePE = themeMetrics.pe;
-            if (params.themeKey === 'Rocket') {
-                stylePE = METRICS['Expansion'].pe; // Rocket sells at Expansion multiple
-            }
-
-            let scenarioPEAdj = 1.0;
-            if (scenario === 'optimistic') scenarioPEAdj = 1.05;   
-            else if (scenario === 'pessimistic') scenarioPEAdj = 0.95;  
-            
-            const basePE = stylePE * scenarioPEAdj;
-            let finalPE = (overrides.finalPE !== undefined) ? overrides.finalPE : basePE;
-
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
             const eps0 = startRPS * (forecastMargin / 100);
-            
             tableData.push({ year: 0, phase: 'Start', rps: startRPS, margin: forecastMargin, eps: eps0, flow: -startPrice, payout: startPayout, isExit: false });
-
             const y_p1_end = CONFIG.ANALYST_YEARS + p1_dur;
             const y_p2_end = y_p1_end + p2_dur;
-
-            // --- DISCOUNTING SETUP with TAIL PENALTY ---
+            
+            // --- DISCOUNTING SETUP ---
             let df = 1.0;
 
             for (let i = 1; i <= N; i++) {
                 let g, m, pay, phaseLabel = "Analyst";
-
                 if (['SPY', 'QQQ', 'DIA'].includes(state.currentTicker)) {
                      phaseLabel = "Index Flow";
-                     
                      const progressG = Math.min(1, (i - 1) / 10); 
                      const progressP = Math.min(1, (i - 1) / 15); 
-                     
-                     const termG = 6.5; 
-                     const termP = 40.0; 
-                     
+                     const termG = 6.5; const termP = 40.0; 
                      g = startGrowth - (startGrowth - termG) * progressG;
                      m = forecastMargin; 
                      pay = startPayout - (startPayout - termP) * progressP;
-
                      phaseTargets.term = { g: termG, m: forecastMargin, p: termP };
-                     phaseTargets.mid = { 
-                         g: startGrowth - (startGrowth - termG) * 0.5, 
-                         m: forecastMargin, 
-                         p: startPayout - (startPayout - termP) * 0.5 
-                     };
-                } 
-                else {
+                } else {
                     if (i <= CONFIG.ANALYST_YEARS) {
                         g = startGrowth; m = forecastMargin; pay = startPayout;
                     } else {
@@ -822,86 +830,116 @@
                         }
                     }
                 }
-
                 pay = clamp(pay, 0, 100);
                 rps = rps * (1 + g / 100);
                 let eps = rps * (m / 100);
                 let div = (eps > 0 ? eps : 0) * (pay / 100);
-                
-                // Apply Tail Penalty
                 let effectiveRate = wacc;
-                if (i > TAIL_PENALTY.START_YEAR) {
-                    effectiveRate += TAIL_PENALTY.EXTRA_DR;
-                }
+                if (i > TAIL_PENALTY.START_YEAR) effectiveRate += TAIL_PENALTY.EXTRA_DR;
                 df *= (1 + effectiveRate);
-                
                 pvDiv += div / df;
                 irrStream.push(div);
-                
                 tableData.push({ year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false });
             }
+
+            // --- TERMINAL P/S & P/E LOGIC ---
+            // 1. Get ticker data from DB for premium calc
+            const tickerData = GLOBAL_DB[state.currentTicker] || {};
             
-            let exitPrice = 0;
+            // 2. Determine Terminal Theme & Adjustment
+            const termParams = getTerminalParams(userThemeKey, scenario, state.currentTicker);
+            const termTheme = METRICS[termParams.themeKey];
+            const scenarioAdj = termParams.adj;
+
+            // 3. Calculate Premium
+            let psPremium = 1.0;
+            const baseMetricPS = METRICS[userThemeKey].ps; // Base PS of current theme
+            
+            if (tickerData.ps && baseMetricPS) {
+                psPremium = tickerData.ps / baseMetricPS;
+            } else if (tickerData.pe && METRICS[userThemeKey].pe) {
+                psPremium = tickerData.pe / METRICS[userThemeKey].pe; // Fallback to PE premium
+            }
+            psPremium = clamp(psPremium, 0.5, 2.0);
+
+            // 4. Calculate Terminal Margin (Decimal)
             const lastData = tableData[tableData.length - 1];
-            if (lastData.eps > 0 && finalPE > 0) {
-                exitPrice = lastData.eps * finalPE;
+            const termMarginDec = (lastData.margin || 1) / 100;
+            // Safety for very low margin to avoid massive PE
+            const safeMarginDec = Math.max(termMarginDec, 0.01);
+
+            // 5. Calculate Final P/S and P/E
+            let finalPS = termTheme.ps * psPremium * scenarioAdj;
+            finalPS = clamp(finalPS, 0.5, 50);
+            
+            let finalPE = finalPS / safeMarginDec;
+            finalPE = clamp(finalPE, 3, 80);
+
+            // Override if matrix asked for specific PE
+            if (overrides.finalPE !== undefined) {
+                finalPE = overrides.finalPE;
+                // Recalculate implied PS for consistency in table if needed, but main driver is PE here
+                finalPS = finalPE * safeMarginDec; 
+            }
+
+            // 6. Exit Price
+            // They are mathematically linked now: Exit Price = EPS * PE = (RPS * Margin) * (PS / Margin) = RPS * PS
+            // We use average to smooth rounding errors
+            const exitPricePE = lastData.eps * finalPE;
+            const exitPricePS = lastData.rps * finalPS;
+            const exitPrice = (exitPricePE + exitPricePS) / 2;
+            const exitDiff = (exitPrice > 0) ? (exitPricePS - exitPricePE) / exitPrice : 0;
+
+            if (lastData.eps > 0) {
                 irrStream[irrStream.length - 1] += exitPrice;
-                
                 tableData.push({
                     year: N,
                     phase: 'EXIT',
-                    rps: null, 
-                    margin: null, 
-                    eps: lastData.eps, 
-                    flow: exitPrice, 
-                    payout: null, 
+                    rps: lastData.rps,
+                    margin: lastData.margin,
+                    eps: lastData.eps,
+                    flow: exitPrice,
+                    payout: null,
                     isExit: true,
-                    finalPE: finalPE
+                    finalPE: finalPE,
+                    finalPS: finalPS,
+                    exitDiff: exitDiff
                 });
             }
-            
-            // Use accumulated discount factor for exit
+
             const pvExit = exitPrice / df;
-            
             const fv = pvDiv + pvExit;
             const irr = calculateIRR(irrStream);
             let upside = null; if (startPrice > 0 && isFinite(fv)) upside = ((fv - startPrice) / startPrice) * 100;
             let spread = null; if (irr != null) spread = (irr - wacc) * 100;
 
-            return { tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE, phaseTargets, themeLCX: METRICS[params.themeKey].lcX, inputs };
+            return { tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE, finalPS, phaseTargets, themeLCX: METRICS[params.themeKey].lcX, inputs };
         }
 
         // --- RENDERING ---
         function renderSummary(result, inputs) {
-            const { irr, wacc, fv, upside, spread, finalPE } = result;
+            const { irr, wacc, fv, upside, spread, finalPE, finalPS } = result;
             safeSetText('disp-years', inputs.N + ' лет');
-            
             const irrEl = document.getElementById('res-irr');
-            
             if (irr == null) {
                 irrEl.innerText = 'n/a';
                 irrEl.className = "text-5xl font-bold tracking-tight text-slate-300";
             } else {
                 irrEl.innerText = (irr * 100).toFixed(1) + '%';
-                irrEl.className = (irr >= wacc) 
-                    ? "text-5xl font-bold tracking-tight text-green-400" 
-                    : "text-5xl font-bold tracking-tight text-yellow-400";
-                
-                if (irr * 100 > 40 && inputs.startGrowth < 25) {
-                     irrEl.className = "text-5xl font-bold tracking-tight text-orange-400"; 
-                }
+                irrEl.className = (irr >= wacc) ? "text-5xl font-bold tracking-tight text-green-400" : "text-5xl font-bold tracking-tight text-yellow-400";
+                if (irr * 100 > 40 && inputs.startGrowth < 25) irrEl.className = "text-5xl font-bold tracking-tight text-orange-400"; 
             }
-
             const upEl = document.getElementById('res-upside');
             upEl.innerText = upside == null ? 'n/a' : (upside > 0 ? '+' : '') + upside.toFixed(1) + '%';
-            if (upside != null && upside < 0) {
-                upEl.className = "text-xl font-bold text-red-400";
-            } else {
-                upEl.className = "text-xl font-bold text-green-400";
-            }
+            if (upside != null && upside < 0) upEl.className = "text-xl font-bold text-red-400";
+            else upEl.className = "text-xl font-bold text-green-400";
 
             safeSetText('res-fv', formatCurrency(fv));
             safeSetText('res-exit-pe', isFinite(finalPE) ? finalPE.toFixed(1) + 'x' : '--x');
+            
+            // NEW: Display Exit PS
+            const psEl = document.getElementById('res-exit-ps');
+            if(psEl) psEl.innerText = isFinite(finalPS) ? finalPS.toFixed(1) + 'x' : '--x';
         }
 
         function renderSensitivity(baseResult, baseInputs, theme, scenario) {
@@ -933,17 +971,13 @@
                     const simResult = runDCFModel(simInputs, theme, scenario, { finalPE: col.val });
                     const cell = document.createElement('div');
                     const isBase = (row.label === 'Base' && col.label === 'Base');
-                    
                     let colorClass = "bg-slate-100 text-slate-600"; 
-                    
-                    if (isBase) {
-                        colorClass = "bg-blue-600 text-white font-bold border border-blue-400 transform scale-105 shadow-lg z-10";
-                    } else {
+                    if (isBase) colorClass = "bg-blue-600 text-white font-bold border border-blue-400 transform scale-105 shadow-lg z-10";
+                    else {
                         const change = (simResult.fv - baseResult.fv) / (baseResult.fv || 1);
                         if (change > 0.05) colorClass = "bg-green-100 text-green-800 font-medium border border-green-200"; 
                         else if (change < -0.05) colorClass = "bg-red-50 text-red-800 font-medium border border-red-100"; 
                     }
-                    
                     cell.className = `text-[11px] font-mono py-1 rounded-sm cursor-default flex items-center justify-center ${colorClass}`;
                     cell.innerText = '$' + simResult.fv.toLocaleString('en-US', {maximumFractionDigits: 0});
                     gridEl.appendChild(cell);
@@ -961,15 +995,20 @@
                 
                 if (row.isExit) {
                     tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
+                    // UPDATED: Dual formula display
                     tr.innerHTML = `
                         <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
                         <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
-                        <td class="px-4 py-2 text-right text-indigo-400" colspan="2"></td>
-                        <td class="px-4 py-2 text-right text-indigo-900">
-                            ${formatCurrency(row.eps)} <span class="text-indigo-500">x ${row.finalPE.toFixed(1)}</span>
+                        <td class="px-4 py-2 text-right">
+                            <div class="text-[10px] text-slate-500">RPS x P/S</div>
+                            <div class="font-mono text-indigo-800">${formatCurrency(row.rps)} x ${row.finalPS.toFixed(1)}x</div>
                         </td>
-                        <td class="px-4 py-2 text-right text-indigo-400">=</td>
-                        <td class="px-4 py-2 text-right font-bold text-indigo-700">${formatCurrency(row.flow)}</td>
+                         <td class="px-4 py-2 text-right">
+                            <div class="text-[10px] text-slate-500">EPS x P/E</div>
+                            <div class="font-mono text-indigo-800">${formatCurrency(row.eps)} x ${row.finalPE.toFixed(1)}x</div>
+                        </td>
+                        <td class="px-4 py-2 text-right text-indigo-400" colspan="2">=</td>
+                        <td class="px-4 py-2 text-right font-bold text-indigo-700 text-lg">${formatCurrency(row.flow)}</td>
                     `;
                 } else {
                     if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
@@ -1124,6 +1163,7 @@
                 startRPS: getVal('inp-rps') || 0,
                 startGrowth: getVal('inp-growth') || 0,
                 forecastMargin: getVal('inp-forecast-margin') || 0,
+                // Check isNaN so 0 is allowed
                 wacc: (isNaN(waccInput) ? 8 : waccInput)/100,
                 startPayout: getVal('inp-payout') || 0,
                 N: parseInt(document.getElementById('slider-years').value) || 15
