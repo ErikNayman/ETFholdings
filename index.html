@@ -440,20 +440,19 @@
             let headerRowIndex = -1;
             let colMap = {}; 
             
-            // IMPROVED KEYMAP & MATCHING LOGIC
+            // IMPROVED KEYMAP & STRICT MATCHING LOGIC
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
                 rps: ['rps', 'revenue', 'sales', 'выручка'], 
                 growth: ['growth', 'cagr', 'рост'], 
-                margin: ['margin', 'маржа'],
+                margin: ['margin', 'net margin', 'margin %', 'маржа'],
                 wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
                 payout: ['payout', 'dividen', 'дивиден'], 
                 theme: ['theme', 'profile', 'strategy', 'тема'],
-                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon'],
-                // P/E and P/S often collide with other words if checked loosely
-                pe: ['p/e', 'pe', 'forward pe', 'pe_curr', 'p/e ratio'],
-                ps: ['p/s', 'ps', 'forward ps', 'ps_curr', 'p/s ratio']
+                n: ['n', 'years', 'term', 'srok', 'срок', 'horizon', 'n term'], // Strict 'n' checks below prevent 'revenue' match
+                pe: ['pe', 'p/e', 'forward pe', 'pe_curr', 'p/e ratio'],
+                ps: ['ps', 'p/s', 'forward ps', 'ps_curr', 'p/s ratio']
             };
 
             for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -461,20 +460,24 @@
                 let tempMap = {};
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
-                    const val = String(cell).toLowerCase().trim();
+                    // Normalize header: remove special chars like dots, trim extra spaces
+                    const val = String(cell).toLowerCase().replace('.', '').trim();
                     
                     for (const [key, candidates] of Object.entries(keyMap)) {
                         // SMART MATCHING:
-                        // If candidate is short (<= 2 chars) or looks like an acronym without slashes, 
-                        // require EXACT match to avoid collisions (e.g. 'ps' inside 'rps', 'n' inside 'revenue')
                         const isMatch = candidates.some(c => {
-                            if (c.length <= 2 && !c.includes('/')) {
-                                return val === c; // Strict equality for 'ps', 'pe', 'n'
+                            // 1. STRICT MATCH for short codes (<= 4 chars) unless they contain slash
+                            // Prevents 'ps' matching 'rps', 'n' matching 'revenue'
+                            if (c.length <= 4 && !c.includes('/')) {
+                                return val === c; 
                             }
-                            return val.includes(c); // Loose check for longer words 'revenue', 'p/e'
+                            // 2. LOOSE MATCH for longer words or terms with slashes
+                            // e.g. 'revenue' matches 'revenue per share', 'p/e' matches 'p/e (ttm)'
+                            return val.includes(c);
                         });
 
                         if (isMatch) {
+                            // Store only if not already found to avoid ambiguity
                             if (tempMap[key] === undefined) tempMap[key] = cellIdx;
                         }
                     }
@@ -516,7 +519,6 @@
                         payout: safeFloat(getValue('payout'), 0),
                         profile: normalizeTheme(getValue('theme')),
                         n_term: nVal,
-                        // Store PE and PS if found
                         pe: safeFloat(getValue('pe'), null),
                         ps: safeFloat(getValue('ps'), null)
                     };
