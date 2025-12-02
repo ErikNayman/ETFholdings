@@ -439,6 +439,8 @@
 
             let headerRowIndex = -1;
             let colMap = {}; 
+            
+            // IMPROVED KEYMAP & MATCHING LOGIC
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
@@ -449,9 +451,9 @@
                 payout: ['payout', 'dividen', 'дивиден'], 
                 theme: ['theme', 'profile', 'strategy', 'тема'],
                 n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon'],
-                // NEW COLUMNS:
-                pe: ['pe', 'p/e', 'forward pe', 'pe_curr', 'p/e ratio'],
-                ps: ['ps', 'p/s', 'forward ps', 'ps_curr', 'p/s ratio']
+                // P/E and P/S often collide with other words if checked loosely
+                pe: ['p/e', 'pe', 'forward pe', 'pe_curr', 'p/e ratio'],
+                ps: ['p/s', 'ps', 'forward ps', 'ps_curr', 'p/s ratio']
             };
 
             for (let i = 0; i < Math.min(rows.length, 20); i++) {
@@ -460,12 +462,25 @@
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
                     const val = String(cell).toLowerCase().trim();
+                    
                     for (const [key, candidates] of Object.entries(keyMap)) {
-                        if (candidates.some(c => val.includes(c))) {
+                        // SMART MATCHING:
+                        // If candidate is short (<= 2 chars) or looks like an acronym without slashes, 
+                        // require EXACT match to avoid collisions (e.g. 'ps' inside 'rps', 'n' inside 'revenue')
+                        const isMatch = candidates.some(c => {
+                            if (c.length <= 2 && !c.includes('/')) {
+                                return val === c; // Strict equality for 'ps', 'pe', 'n'
+                            }
+                            return val.includes(c); // Loose check for longer words 'revenue', 'p/e'
+                        });
+
+                        if (isMatch) {
                             if (tempMap[key] === undefined) tempMap[key] = cellIdx;
                         }
                     }
                 });
+                
+                // Require at least Ticker and Price to consider it a valid header row
                 if (tempMap.ticker !== undefined && tempMap.price !== undefined) {
                     headerRowIndex = i; colMap = tempMap; break;
                 }
@@ -490,6 +505,7 @@
                         return isNaN(parsed) ? def : parsed;
                     };
                     const nVal = safeFloat(getValue('n'), null);
+                    
                     newDB[ticker] = {
                         name: ticker + ' (Excel)',
                         price: safeFloat(rawPrice, 0),
