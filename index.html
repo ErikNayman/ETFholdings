@@ -123,7 +123,13 @@
 
                     <div class="grid grid-cols-2 gap-3 text-sm">
                         <div class="col-span-2">
-                            <label class="block text-xs font-bold text-slate-700">Цена Акции ($)</label>
+                            <div class="flex justify-between items-center">
+                                <label class="block text-xs font-bold text-slate-700">Цена Акции ($)</label>
+                                <div class="flex gap-2">
+                                    <span id="disp-current-pe" class="text-[9px] text-slate-400 bg-slate-100 px-1 rounded" title="Текущий P/E">PE: --</span>
+                                    <span id="disp-current-ps" class="text-[9px] text-slate-400 bg-slate-100 px-1 rounded" title="Текущий P/S">PS: --</span>
+                                </div>
+                            </div>
                             <input type="number" id="inp-price" class="w-full border-2 border-blue-100 p-2 rounded font-bold text-blue-800 text-lg" value="150">
                         </div>
 
@@ -380,7 +386,6 @@
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
-                    
                     let successCount = 0;
                     for (const sheetName of workbook.SheetNames) {
                         const worksheet = workbook.Sheets[sheetName];
@@ -391,7 +396,6 @@
                             successCount += res.count;
                         }
                     }
-
                     if (successCount > 0) {
                         document.getElementById('db-status').innerText = `Excel (${successCount} шт.)`;
                         document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
@@ -400,7 +404,6 @@
                         errEl.innerText = "Не удалось найти данные. Проверьте заголовки (Ticker, Price...).";
                         errEl.classList.remove('hidden');
                     }
-
                 } catch (err) {
                     console.error(err);
                     errEl.innerText = "Ошибка чтения файла.";
@@ -487,7 +490,6 @@
                         return isNaN(parsed) ? def : parsed;
                     };
                     const nVal = safeFloat(getValue('n'), null);
-                    
                     newDB[ticker] = {
                         name: ticker + ' (Excel)',
                         price: safeFloat(rawPrice, 0),
@@ -510,7 +512,6 @@
 
         // --- AUTO-PROFILE ---
         function detectProfile(data) {
-            // ... existing heuristic ...
             const g = data.growth;
             const m = data.margin;
             const p = data.payout;
@@ -544,6 +545,21 @@
                 document.getElementById('inp-wacc').value = data.wacc;
                 document.getElementById('inp-payout').value = data.payout;
                 
+                // UI: Show PE/PS Badges if data available
+                const peBadge = document.getElementById('disp-current-pe');
+                const psBadge = document.getElementById('disp-current-ps');
+                
+                // Helper to calc fallback if missing
+                const calcPE = (data.price / (data.rps * data.margin/100)).toFixed(1);
+                const calcPS = (data.price / data.rps).toFixed(2);
+                
+                peBadge.innerText = data.pe ? `PE: ${data.pe.toFixed(1)}x` : `PE: ${calcPE}x*`;
+                psBadge.innerText = data.ps ? `PS: ${data.ps.toFixed(2)}x` : `PS: ${calcPS}x*`;
+                
+                // Style: Grey if calc, Blue if source
+                peBadge.className = data.pe ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
+                psBadge.className = data.ps ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
+
                 const profile = data.profile || detectProfile(data);
                 document.getElementById('theme-selector').value = profile;
                 safeSetText('company-name', data.name || rawTicker);
@@ -574,7 +590,6 @@
         }
         
         function resetToDefaults() {
-            // ... (existing reset logic) ...
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
             document.getElementById('inp-price').value = data.price;
@@ -709,6 +724,7 @@
             if (!hasPos || !hasNeg) return null; 
             const maxIter = CONFIG.IRR_MAX_ITER, tol = CONFIG.IRR_TOL;
             let rate = 0.1;
+
             for (let i = 0; i < maxIter; i++) {
                 let npv = 0, d_npv = 0;
                 const onePlus = 1 + rate;
