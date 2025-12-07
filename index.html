@@ -553,17 +553,11 @@
 
             if (scenario === 'optimistic') {
                 if (baseTheme === 'Rocket') {
-                    // Prevent Expansion -> Rocket shift in optimistic.
-                    // If user selected 'Expansion', they should not become 'Rocket'
-                    // This logic only applies if baseTheme was Rocket initially.
                     return { themeKey: 'Rocket', adj: 1.15 }; 
                 }
-                // --- NEW FIX: Prevent Expansion -> Rocket shift explicitly ---
                 if (baseTheme === 'Expansion') {
-                     // Stay Expansion, but with premium adj. Do NOT shift left to Rocket.
                      return { themeKey: 'Expansion', adj: 1.15 };
                 }
-
                 if (baseTheme === 'Fallen') {
                     return { themeKey: 'Steady', adj: 1.0 }; 
                 }
@@ -588,6 +582,7 @@
                 const data = GLOBAL_DB[rawTicker];
                 state.currentTicker = rawTicker; 
                 
+                // FIX: Format numbers to 2 decimal places for display inputs
                 document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
                 document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
                 document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -640,6 +635,7 @@
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
             
+            // FIX: Format numbers to 2 decimal places for reset
             document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
             document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
             document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -822,30 +818,33 @@
             const termTheme = METRICS[termParams.themeKey];
             const scenarioAdj = termParams.adj;
 
-            // FIX: CALCULATE PREMIUM DYNAMICALLY FROM INPUTS
-            // This ensures manual input changes reflect in valuation premium immediately
+            // 3. Calculate Premium
+            let psPremium = 1.0;
+            const baseMetricPS = METRICS[userThemeKey].ps; // Base PS of current theme
+            
+            // Prefer current input P/S for premium calc if available
             let currentInputPS = 0;
-            if (startRPS > 0) {
+            if (startRPS > 0 && startPrice > 0) {
                 currentInputPS = startPrice / startRPS;
             }
 
-            let psPremium = 1.0;
-            const baseMetricPS = METRICS[userThemeKey].ps; 
-            
-            // Prefer current input P/S for premium calc if available
             if (currentInputPS > 0 && baseMetricPS > 0) {
                 psPremium = currentInputPS / baseMetricPS;
-            } 
-            // Fallback to DB stored PS if for some reason inputs are broken (unlikely)
-            else if (tickerData.ps && baseMetricPS) {
+            } else if (tickerData.ps && baseMetricPS) {
                 psPremium = tickerData.ps / baseMetricPS;
             } else if (tickerData.pe && METRICS[userThemeKey].pe) {
-                psPremium = tickerData.pe / METRICS[userThemeKey].pe; 
+                psPremium = tickerData.pe / METRICS[userThemeKey].pe; // Fallback to PE premium
             }
-            
+            // TIGHTER CLAMP to avoid extreme multiples
             psPremium = clamp(psPremium, 0.5, 2.0);
             
-            const finalPremium = 1 + (psPremium - 1) * 0.5;
+            // NEW: Mean Reversion for Premium based on Scenario
+            let reversionFactor = 0.25; // Base: Strong reversion (only 25% of premium survives 10y)
+            if (scenario === 'optimistic') reversionFactor = 0.75; 
+            if (scenario === 'pessimistic') reversionFactor = 0.0; 
+            if (psPremium < 1.0 && scenario === 'base') reversionFactor = 0.5;
+
+            const finalPremium = 1 + (psPremium - 1) * reversionFactor;
 
             // Run loop first
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
@@ -908,25 +907,23 @@
                 tableData.push({ year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false });
             }
 
-            // Calculate Final P/S and P/E
+            // Calculate Final P/S and P/E (Post-loop to use actual terminal margin)
+            const lastData = tableData[tableData.length - 1];
+            const termMarginDec = (lastData.margin || 1) / 100;
+            const safeMarginDec = Math.max(termMarginDec, 0.01);
+
+            // Base PS from Terminal Theme
             let finalPS = termTheme.ps * finalPremium * scenarioAdj;
             
-            // Safety caps
-            let maxPE = 80;
-            if (scenario === 'base') maxPE = 30;       // Base case shouldn't bet on >30x exit
-            if (scenario === 'pessimistic') maxPE = 20; // Pessimistic cap
-            
-            let finalPE = finalPS / safeMarginDec;
-            
-            // Apply PE Cap and recalc PS to match
-            if (finalPE > maxPE) {
-                finalPE = maxPE;
-                finalPS = finalPE * safeMarginDec;
+            // Limit Base Scenario PS to never exceed Current PS (Prevent "Multiple Expansion" thesis in base case)
+            if (scenario === 'base' && currentInputPS > 0) {
+                finalPS = Math.min(finalPS, currentInputPS);
             }
             
-            // Clamp lower bounds
-            finalPS = Math.max(finalPS, 0.5);
-            finalPE = Math.max(finalPE, 5);
+            finalPS = clamp(finalPS, 0.5, 50);
+            
+            let finalPE = finalPS / safeMarginDec;
+            finalPE = clamp(finalPE, 3, 80);
 
             // Override if matrix asked for specific PE
             if (overrides.finalPE !== undefined) {
