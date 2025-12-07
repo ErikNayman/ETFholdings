@@ -908,17 +908,25 @@
                 tableData.push({ year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false });
             }
 
-            // Calculate Final P/S and P/E (Post-loop to use actual terminal margin)
-            const lastData = tableData[tableData.length - 1];
-            const termMarginDec = (lastData.margin || 1) / 100;
-            const safeMarginDec = Math.max(termMarginDec, 0.01);
-
-            // Base PS from Terminal Theme
+            // Calculate Final P/S and P/E
             let finalPS = termTheme.ps * finalPremium * scenarioAdj;
-            finalPS = clamp(finalPS, 0.5, 50);
+            
+            // Safety caps
+            let maxPE = 80;
+            if (scenario === 'base') maxPE = 30;       // Base case shouldn't bet on >30x exit
+            if (scenario === 'pessimistic') maxPE = 20; // Pessimistic cap
             
             let finalPE = finalPS / safeMarginDec;
-            finalPE = clamp(finalPE, 3, 80);
+            
+            // Apply PE Cap and recalc PS to match
+            if (finalPE > maxPE) {
+                finalPE = maxPE;
+                finalPS = finalPE * safeMarginDec;
+            }
+            
+            // Clamp lower bounds
+            finalPS = Math.max(finalPS, 0.5);
+            finalPE = Math.max(finalPE, 5);
 
             // Override if matrix asked for specific PE
             if (overrides.finalPE !== undefined) {
