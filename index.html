@@ -429,8 +429,6 @@
 
             let headerRowIndex = -1;
             let colMap = {}; 
-            
-            // IMPROVED KEYMAP & STRICT MATCHING LOGIC
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
@@ -440,7 +438,7 @@
                 wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
                 payout: ['payout', 'dividen', 'дивиден'], 
                 theme: ['theme', 'profile', 'strategy', 'тема'],
-                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon', 'n term'], // Strict 'n' checks below prevent 'revenue' match
+                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon', 'n term'],
                 pe: ['pe', 'p/e', 'forward pe', 'pe_curr', 'p/e ratio'],
                 ps: ['ps', 'p/s', 'forward ps', 'ps_curr', 'p/s ratio']
             };
@@ -450,30 +448,15 @@
                 let tempMap = {};
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
-                    // Normalize header: remove special chars like dots, trim extra spaces
                     const val = String(cell).toLowerCase().replace('.', '').trim();
-                    
                     for (const [key, candidates] of Object.entries(keyMap)) {
-                        // SMART MATCHING:
                         const isMatch = candidates.some(c => {
-                            // 1. STRICT MATCH for short codes (<= 4 chars) unless they contain slash
-                            // Prevents 'ps' matching 'rps', 'n' matching 'revenue'
-                            if (c.length <= 4 && !c.includes('/')) {
-                                return val === c; 
-                            }
-                            // 2. LOOSE MATCH for longer words or terms with slashes
-                            // e.g. 'revenue' matches 'revenue per share', 'p/e' matches 'p/e (ttm)'
+                            if (c.length <= 4 && !c.includes('/')) return val === c; 
                             return val.includes(c);
                         });
-
-                        if (isMatch) {
-                            // Store only if not already found to avoid ambiguity
-                            if (tempMap[key] === undefined) tempMap[key] = cellIdx;
-                        }
+                        if (isMatch && tempMap[key] === undefined) tempMap[key] = cellIdx;
                     }
                 });
-                
-                // Require at least Ticker and Price to consider it a valid header row
                 if (tempMap.ticker !== undefined && tempMap.price !== undefined) {
                     headerRowIndex = i; colMap = tempMap; break;
                 }
@@ -509,7 +492,6 @@
                         payout: safeFloat(getValue('payout'), 0),
                         profile: normalizeTheme(getValue('theme')),
                         n_term: nVal,
-                        // Store PE and PS if found
                         pe: safeFloat(getValue('pe'), null),
                         ps: safeFloat(getValue('ps'), null)
                     };
@@ -536,40 +518,41 @@
             return 'Steady'; 
         }
 
-        // --- SCENARIO HELPER (NEW LOGIC FOR THEME SHIFTING) ---
+        // --- SCENARIO HELPER ---
         function getTerminalParams(baseTheme, scenario, ticker) {
+            // FIX: Index Exception - Never Shift Theme
+            if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
+                let adj = 1.0;
+                if (scenario === 'optimistic') adj = 1.05;
+                if (scenario === 'pessimistic') adj = 0.95;
+                return { themeKey: baseTheme, adj: adj };
+            }
+
             const themeIndex = THEME_ORDER.indexOf(baseTheme);
             let targetThemeKey = baseTheme;
             let scenarioAdj = 1.0;
 
-            // Base Case
             if (scenario === 'base') {
                 return { themeKey: baseTheme, adj: 1.0 };
             }
 
-            // Pessimistic Case (Shift Right -> Value/Decline)
             if (scenario === 'pessimistic') {
-                // Exceptions
                 if (baseTheme === 'Fallen' || baseTheme === 'DeepValue') {
-                    return { themeKey: baseTheme, adj: 0.9 }; // Stay, discount
+                    return { themeKey: baseTheme, adj: 0.9 }; 
                 }
-                // General shift right
                 if (themeIndex !== -1 && themeIndex < THEME_ORDER.length - 1) {
                     targetThemeKey = THEME_ORDER[themeIndex + 1];
                 }
                 return { themeKey: targetThemeKey, adj: 1.0 };
             }
 
-            // Optimistic Case (Shift Left -> Growth/Quality)
             if (scenario === 'optimistic') {
-                // Exceptions
                 if (baseTheme === 'Rocket') {
-                    return { themeKey: 'Rocket', adj: 1.15 }; // Stay, premium
+                    return { themeKey: 'Rocket', adj: 1.15 }; 
                 }
                 if (baseTheme === 'Fallen') {
-                    return { themeKey: 'Steady', adj: 1.0 }; // Exception rule
+                    return { themeKey: 'Steady', adj: 1.0 }; 
                 }
-                // General shift left
                 if (themeIndex > 0) {
                     targetThemeKey = THEME_ORDER[themeIndex - 1];
                 }
@@ -591,7 +574,6 @@
                 const data = GLOBAL_DB[rawTicker];
                 state.currentTicker = rawTicker; 
                 
-                // FIX: Format numbers to 2 decimal places for display inputs
                 document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
                 document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
                 document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -599,18 +581,15 @@
                 document.getElementById('inp-wacc').value = data.wacc ? Number(data.wacc).toFixed(2) : '';
                 document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
                 
-                // UI: Show PE/PS Badges if data available
                 const peBadge = document.getElementById('disp-current-pe');
                 const psBadge = document.getElementById('disp-current-ps');
                 
-                // Helper to calc fallback if missing
                 const calcPE = (data.price / (data.rps * data.margin/100)).toFixed(1);
                 const calcPS = (data.price / data.rps).toFixed(2);
                 
                 peBadge.innerText = data.pe ? `PE: ${data.pe.toFixed(1)}x` : `PE: ${calcPE}x*`;
                 psBadge.innerText = data.ps ? `PS: ${data.ps.toFixed(2)}x` : `PS: ${calcPS}x*`;
                 
-                // Style: Grey if calc, Blue if source
                 peBadge.className = data.pe ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
                 psBadge.className = data.ps ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
 
@@ -647,7 +626,6 @@
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
             
-            // FIX: Format numbers to 2 decimal places for reset
             document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
             document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
             document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -843,6 +821,10 @@
                 psPremium = tickerData.pe / METRICS[userThemeKey].pe; // Fallback to PE premium
             }
             psPremium = clamp(psPremium, 0.5, 2.0);
+            
+            // NEW: Mean Reversion for Premium
+            // Pull premium back towards 1.0 over time (e.g. 50% reversion)
+            const finalPremium = 1 + (psPremium - 1) * 0.5;
 
             // 4. Calculate Terminal Margin (Decimal)
             // We use targetTerm.m because we need the terminal margin for the valuation multiple logic
@@ -916,7 +898,7 @@
             const safeMarginDec = Math.max(termMarginDec, 0.01);
 
             // Base PS from Terminal Theme
-            let finalPS = termTheme.ps * psPremium * scenarioAdj;
+            let finalPS = termTheme.ps * finalPremium * scenarioAdj;
             finalPS = clamp(finalPS, 0.5, 50);
             
             let finalPE = finalPS / safeMarginDec;
@@ -1130,20 +1112,7 @@
 
         // --- CHARTS ---
         function initChart() {
-            // Cash Flow Chart
-            const ctx = document.getElementById('cfChart');
-            if (ctx) {
-                state.charts.cf = new Chart(ctx.getContext('2d'), {
-                    type: 'bar',
-                    data: { labels: [], datasets: [] },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: { y: { display:false }, x: { display: false } }
-                    }
-                });
-            }
-
+            // Lifecycle Chart Only
             const ctxLc = document.getElementById('lifecycleChart');
             if (ctxLc) {
                 const curveData = [];
@@ -1183,22 +1152,6 @@
             }
         }
 
-        function updateChart(stream) {
-            if (!state.charts.cf) return;
-            const labels = stream.map((_, i) => i === 0 ? 'Start' : `Y${i}`);
-            const colors = stream.map((v, i) => {
-                if (i === 0) return '#ef4444';
-                if (i === stream.length - 1) return '#4f46e5'; 
-                if (i <= 2) return '#f59e0b'; 
-                return '#3b82f6';
-            });
-            
-            state.charts.cf.options.scales.y = { type: 'linear', display: true };
-            state.charts.cf.data.labels = labels;
-            state.charts.cf.data.datasets = [{ label: 'Flow', data: stream, backgroundColor: colors }];
-            state.charts.cf.update();
-        }
-
         // --- MAIN ---
         function readInputsFromDOM() {
             const getVal = (id) => parseFloat(document.getElementById(id).value);
@@ -1222,7 +1175,6 @@
             const result = runDCFModel(inputs, userTheme, state.scenario);
             renderSummary(result, inputs);
             renderTable(result.tableData);
-            updateChart(result.irrStream);
             renderSensitivity(result, inputs, userTheme, state.scenario);
             
             renderLifecycleVisuals(result, userTheme, state.scenario);
