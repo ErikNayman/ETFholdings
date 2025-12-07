@@ -219,7 +219,7 @@
                                 <canvas id="lifecycleChart"></canvas>
                             </div>
                             <div class="text-center text-[10px] text-slate-400 mt-2 italic">
-                                Показывает положение компании в 3-х сценариях
+                                Карта рынка: Точки тем (серые), ETF (квадраты) и Ваша Компания (круг)
                             </div>
                         </div>
 
@@ -318,14 +318,14 @@
         // Current Active DB
         let GLOBAL_DB = { ...DEMO_DB };
 
-        // METRICS - UPDATED WITH REALISTIC BASELINES
+        // METRICS with P/S field added
         const METRICS = {
             'Rocket':    { name: 'Rocket',    growth: 40,    margin: 3.8,   pe: 407.9, ps: 15.39, payout: 0,  N: 20, lcX: 15 }, 
             'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.9,  pe: 24.0,  ps: 8.13,  payout: 15, N: 15, lcX: 30 }, 
-            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 24.0,  pe: 26.0,  ps: 6.20,  payout: 15, N: 15, lcX: 40 }, // Balanced: PS 6.2 matches QQQ base better
+            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 24.0,  pe: 26.0,  ps: 6.20,  payout: 15, N: 15, lcX: 40 }, 
             'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 26.0,  pe: 22.1,  ps: 5.73,  payout: 50, N: 12, lcX: 55 }, 
-            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 14.0,  pe: 22.0,  ps: 3.10,  payout: 45, N: 12, lcX: 65 }, // SPY Base raised to reflect modern weighting
-            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5,  pe: 19.5,  ps: 2.45,  payout: 40, N: 12, lcX: 75 }, // DIA Base raised significantly from distressed levels
+            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 14.0,  pe: 22.0,  ps: 3.10,  payout: 45, N: 12, lcX: 65 }, 
+            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5,  pe: 19.5,  ps: 2.45,  payout: 40, N: 12, lcX: 75 }, 
             'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8,  pe: 13.5,  ps: 2.00,  payout: 75, N: 9,  lcX: 85 },
             'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.1,  pe: 11.7,  ps: 1.42,  payout: 50, N: 6,  lcX: 95 },
             'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 7.5,   pe: 14.0,  ps: 1.05,  payout: 30, N: 9,  lcX: 90 } 
@@ -356,6 +356,9 @@
             currentTicker: '',
             maxNFromFile: null 
         };
+        
+        // Bell Curve for charts
+        const bellCurve = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2)));
 
         // --- EXCEL LOGIC ---
         function handleExcelUpload(e) {
@@ -429,6 +432,8 @@
 
             let headerRowIndex = -1;
             let colMap = {}; 
+            
+            // STRICT MATCHING LOGIC
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
@@ -448,7 +453,6 @@
                 let tempMap = {};
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
-                    // Normalize header: remove special chars like dots, trim extra spaces
                     const val = String(cell).toLowerCase().replace('.', '').trim();
                     
                     for (const [key, candidates] of Object.entries(keyMap)) {
@@ -522,7 +526,6 @@
 
         // --- SCENARIO HELPER ---
         function getTerminalParams(baseTheme, scenario, ticker) {
-            // FIX: Index Exception - Never Shift Theme
             if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
                 let adj = 1.0;
                 if (scenario === 'optimistic') adj = 1.05;
@@ -805,33 +808,22 @@
             let p3_dur = modelYears - p1_dur - p2_dur;
 
             // --- TERMINAL P/S & P/E LOGIC ---
-            // 1. Get ticker data from DB for premium calc
             const tickerData = GLOBAL_DB[state.currentTicker] || {};
-            
-            // 2. Determine Terminal Theme & Adjustment
             const termParams = getTerminalParams(userThemeKey, scenario, state.currentTicker);
             const termTheme = METRICS[termParams.themeKey];
             const scenarioAdj = termParams.adj;
 
-            // 3. Calculate Premium
             let psPremium = 1.0;
-            const baseMetricPS = METRICS[userThemeKey].ps; // Base PS of current theme
+            const baseMetricPS = METRICS[userThemeKey].ps; 
             
             if (tickerData.ps && baseMetricPS) {
                 psPremium = tickerData.ps / baseMetricPS;
             } else if (tickerData.pe && METRICS[userThemeKey].pe) {
-                psPremium = tickerData.pe / METRICS[userThemeKey].pe; // Fallback to PE premium
+                psPremium = tickerData.pe / METRICS[userThemeKey].pe; 
             }
             psPremium = clamp(psPremium, 0.5, 2.0);
             
-            // NEW: Mean Reversion for Premium
-            // Pull premium back towards 1.0 over time (e.g. 50% reversion)
             const finalPremium = 1 + (psPremium - 1) * 0.5;
-
-            // 4. Calculate Terminal Margin (Decimal)
-            // We use targetTerm.m because we need the terminal margin for the valuation multiple logic
-            // Although we calculate the loop first to get lastData, let's prep here.
-            // Actually better to run loop first to get exact last year margin.
 
             // Run loop first
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
@@ -1023,7 +1015,6 @@
                 
                 if (row.isExit) {
                     tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
-                    // UPDATED: Dual formula display
                     tr.innerHTML = `
                         <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
                         <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
@@ -1096,19 +1087,34 @@
             
             const bell = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2))); 
             
-            chart.data.datasets[1].data = [{x: pX, y: bell(pX)}]; // Red
-            chart.data.datasets[2].data = [{x: baseX, y: bell(baseX)}]; // Blue
-            chart.data.datasets[3].data = [{x: oX, y: bell(oX)}]; // Green
-            
-            const pointRadii = [0, 4, 4, 4]; 
-            if(scenario === 'pessimistic') pointRadii[1] = 8;
-            if(scenario === 'base') pointRadii[2] = 8;
-            if(scenario === 'optimistic') pointRadii[3] = 8;
-            
-            chart.data.datasets[1].pointRadius = pointRadii[1];
-            chart.data.datasets[2].pointRadius = pointRadii[2];
-            chart.data.datasets[3].pointRadius = pointRadii[3];
+            // Fixed reference points for ETFs
+            const etfData = [
+                { x: METRICS['IndexTech'].lcX, y: bell(METRICS['IndexTech'].lcX), label: 'QQQ' },
+                { x: METRICS['Steady'].lcX, y: bell(METRICS['Steady'].lcX), label: 'SPY' },
+                { x: METRICS['IndexValue'].lcX, y: bell(METRICS['IndexValue'].lcX), label: 'DIA' }
+            ];
 
+            // Background theme markers
+            const themeData = THEME_ORDER.map(k => ({
+                x: METRICS[k].lcX,
+                y: bell(METRICS[k].lcX)
+            }));
+            
+            // Update Datasets
+            // 0: Curve, 1: All Themes (Gray), 2: ETFs (Square), 3: Target Company (Big Circle)
+            
+            chart.data.datasets[1].data = themeData; 
+            chart.data.datasets[2].data = etfData;
+            
+            // Target Company Position based on Scenario
+            let activeX = baseX;
+            let color = '#3b82f6'; // Base Blue
+            if (scenario === 'optimistic') { activeX = oX; color = '#22c55e'; }
+            if (scenario === 'pessimistic') { activeX = pX; color = '#ef4444'; }
+            
+            chart.data.datasets[3].data = [{x: activeX, y: bell(activeX)}]; 
+            chart.data.datasets[3].backgroundColor = color;
+            
             chart.update();
         }
 
@@ -1137,14 +1143,46 @@
                                 backgroundColor: 'rgba(241, 245, 249, 0.5)',
                                 tension: 0.4
                             },
-                            { label: 'Pessimistic', data: [], backgroundColor: '#ef4444', pointRadius: 5, type: 'scatter' }, // Red
-                            { label: 'Base',        data: [], backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter' }, // Blue
-                            { label: 'Optimistic',  data: [], backgroundColor: '#22c55e', pointRadius: 5, type: 'scatter' }  // Green
+                            { 
+                                label: 'Themes', 
+                                data: [], 
+                                backgroundColor: '#94a3b8', 
+                                pointRadius: 3, 
+                                type: 'scatter' 
+                            },
+                            { 
+                                label: 'ETFs', 
+                                data: [], 
+                                backgroundColor: '#6366f1', 
+                                pointRadius: 6, 
+                                pointStyle: 'rectRot',
+                                type: 'scatter' 
+                            }, 
+                            { 
+                                label: 'Company', 
+                                data: [], 
+                                backgroundColor: '#3b82f6', 
+                                pointRadius: 10, 
+                                type: 'scatter' 
+                            }
                         ]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { 
+                                enabled: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        // Custom logic to show ETF names if available in raw data
+                                        const raw = context.raw;
+                                        if (raw.label) return raw.label;
+                                        return context.dataset.label;
+                                    }
+                                }
+                            } 
+                        },
                         scales: {
                             x: { type: 'linear', display: true, min: 0, max: 100, title: {display: true, text: 'Стадии: Старт -> Рост -> Зрелость -> Спад'} },
                             y: { display: false, min: 0, max: 110 }
