@@ -450,7 +450,7 @@
                 wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
                 payout: ['payout', 'dividen', 'дивиден'], 
                 theme: ['theme', 'profile', 'strategy', 'тема'],
-                n: ['n', 'years', 'term', 'srok', 'срок', 'horizon', 'n term'], // Strict 'n' checks below prevent 'revenue' match
+                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon', 'n term'], // Strict 'n' checks below prevent 'revenue' match
                 pe: ['pe', 'p/e', 'forward pe', 'pe_curr', 'p/e ratio'],
                 ps: ['ps', 'p/s', 'forward ps', 'ps_curr', 'p/s ratio']
             };
@@ -519,6 +519,7 @@
                         payout: safeFloat(getValue('payout'), 0),
                         profile: normalizeTheme(getValue('theme')),
                         n_term: nVal,
+                        // Store PE and PS if found
                         pe: safeFloat(getValue('pe'), null),
                         ps: safeFloat(getValue('ps'), null)
                     };
@@ -535,6 +536,7 @@
             const p = data.payout;
             if (data.name && data.name.includes('Nasdaq')) return 'IndexTech';
             if (data.name && data.name.includes('Dow')) return 'IndexValue';
+            
             if (g > 30) return 'Rocket';
             if (g > 15 && m > 20) return 'Expansion';
             if (g > 10 && m > 15 && p > 10) return 'Momentum';
@@ -542,6 +544,49 @@
             if (g < 5 && p > 0) return 'DeepValue';
             if (g > 15 && m < 10) return 'Fallen';
             return 'Steady'; 
+        }
+
+        // --- SCENARIO HELPER (NEW LOGIC FOR THEME SHIFTING) ---
+        function getTerminalParams(baseTheme, scenario, ticker) {
+            const themeIndex = THEME_ORDER.indexOf(baseTheme);
+            let targetThemeKey = baseTheme;
+            let scenarioAdj = 1.0;
+
+            // Base Case
+            if (scenario === 'base') {
+                return { themeKey: baseTheme, adj: 1.0 };
+            }
+
+            // Pessimistic Case (Shift Right -> Value/Decline)
+            if (scenario === 'pessimistic') {
+                // Exceptions
+                if (baseTheme === 'Fallen' || baseTheme === 'DeepValue') {
+                    return { themeKey: baseTheme, adj: 0.9 }; // Stay, discount
+                }
+                // General shift right
+                if (themeIndex !== -1 && themeIndex < THEME_ORDER.length - 1) {
+                    targetThemeKey = THEME_ORDER[themeIndex + 1];
+                }
+                return { themeKey: targetThemeKey, adj: 1.0 };
+            }
+
+            // Optimistic Case (Shift Left -> Growth/Quality)
+            if (scenario === 'optimistic') {
+                // Exceptions
+                if (baseTheme === 'Rocket') {
+                    return { themeKey: 'Rocket', adj: 1.15 }; // Stay, premium
+                }
+                if (baseTheme === 'Fallen') {
+                    return { themeKey: 'Steady', adj: 1.0 }; // Exception rule
+                }
+                // General shift left
+                if (themeIndex > 0) {
+                    targetThemeKey = THEME_ORDER[themeIndex - 1];
+                }
+                return { themeKey: targetThemeKey, adj: 1.0 };
+            }
+            
+            return { themeKey: baseTheme, adj: 1.0 };
         }
 
         function loadTicker() {
@@ -556,12 +601,13 @@
                 const data = GLOBAL_DB[rawTicker];
                 state.currentTicker = rawTicker; 
                 
-                document.getElementById('inp-price').value = data.price;
-                document.getElementById('inp-rps').value = data.rps;
-                document.getElementById('inp-growth').value = data.growth;
-                document.getElementById('inp-forecast-margin').value = data.margin;
-                document.getElementById('inp-wacc').value = data.wacc;
-                document.getElementById('inp-payout').value = data.payout;
+                // FIX: Format numbers to 2 decimal places for display inputs
+                document.getElementById('inp-price').value = data.price ? data.price.toFixed(2) : '';
+                document.getElementById('inp-rps').value = data.rps ? data.rps.toFixed(2) : '';
+                document.getElementById('inp-growth').value = data.growth ? data.growth.toFixed(2) : '';
+                document.getElementById('inp-forecast-margin').value = data.margin ? data.margin.toFixed(2) : '';
+                document.getElementById('inp-wacc').value = data.wacc ? data.wacc.toFixed(2) : '';
+                document.getElementById('inp-payout').value = data.payout ? data.payout.toFixed(2) : '';
                 
                 // UI: Show PE/PS Badges if data available
                 const peBadge = document.getElementById('disp-current-pe');
@@ -610,14 +656,18 @@
         function resetToDefaults() {
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
-            document.getElementById('inp-price').value = data.price;
-            document.getElementById('inp-rps').value = data.rps;
-            document.getElementById('inp-growth').value = data.growth;
-            document.getElementById('inp-forecast-margin').value = data.margin;
-            document.getElementById('inp-wacc').value = data.wacc;
-            document.getElementById('inp-payout').value = data.payout;
+            
+            // FIX: Format numbers to 2 decimal places for reset
+            document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
+            document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
+            document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
+            document.getElementById('inp-forecast-margin').value = data.margin ? Number(data.margin).toFixed(2) : '';
+            document.getElementById('inp-wacc').value = data.wacc ? Number(data.wacc).toFixed(2) : '';
+            document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
+            
             const profile = data.profile || detectProfile(data);
             document.getElementById('theme-selector').value = profile;
+            
             const slider = document.getElementById('slider-years');
             if (data.n_term && data.n_term > 0) {
                 const nTerm = Math.min(Math.max(data.n_term, 5), 35);
@@ -630,10 +680,12 @@
                 state.userSetYears = false; 
                 state.maxNFromFile = null;
             }
+            
             const panel = document.getElementById('inputs-panel');
             panel.classList.remove('flash-update');
             void panel.offsetWidth; 
             panel.classList.add('flash-update');
+            
             state.scenario = 'base';
             setScenario('base');
         }
@@ -644,69 +696,29 @@
         function formatPercent(n) { return n == null || !isFinite(n) ? '--%' : n.toFixed(1) + '%'; }
         function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
-        // --- SCENARIO HELPER (NEW LOGIC FOR THEME SHIFTING) ---
-        function getTerminalParams(baseTheme, scenario, ticker) {
-            const themeIndex = THEME_ORDER.indexOf(baseTheme);
-            let targetThemeKey = baseTheme;
-            let scenarioAdj = 1.0;
-
-            // Base Case
-            if (scenario === 'base') {
-                return { themeKey: baseTheme, adj: 1.0 };
-            }
-
-            // Pessimistic Case (Shift Right -> Value/Decline)
-            if (scenario === 'pessimistic') {
-                // Exceptions
-                if (baseTheme === 'Fallen' || baseTheme === 'DeepValue') {
-                    return { themeKey: baseTheme, adj: 0.9 }; // Stay, discount
-                }
-                // General shift right
-                if (themeIndex !== -1 && themeIndex < THEME_ORDER.length - 1) {
-                    targetThemeKey = THEME_ORDER[themeIndex + 1];
-                }
-                return { themeKey: targetThemeKey, adj: 1.0 };
-            }
-
-            // Optimistic Case (Shift Left -> Growth/Quality)
-            if (scenario === 'optimistic') {
-                // Exceptions
-                if (baseTheme === 'Rocket') {
-                    return { themeKey: 'Rocket', adj: 1.15 }; // Stay, premium
-                }
-                if (baseTheme === 'Fallen') {
-                    return { themeKey: 'Steady', adj: 1.0 }; // Exception rule
-                }
-                // General shift left
-                if (themeIndex > 0) {
-                    targetThemeKey = THEME_ORDER[themeIndex - 1];
-                }
-                // Special expansion logic (safety)
-                if (baseTheme === 'Expansion' && targetThemeKey === 'Rocket') {
-                    // If user prefers Expansion stays expansion in optimistic
-                    // But request says shift left generally. Let's allow shift but clamp later if needed.
-                    // For now following the "Shift Left" rule as requested.
-                }
-                return { themeKey: targetThemeKey, adj: 1.0 };
-            }
-            
-            return { themeKey: baseTheme, adj: 1.0 };
-        }
-
+        // --- SCENARIO HORIZON HELPER ---
         function getScenarioHorizon(baseN, scenario) {
             const minN = 5;
             let maxN = 30; 
-            if (state.maxNFromFile != null) maxN = Math.min(maxN, state.maxNFromFile);
-            if (scenario === 'optimistic') return clamp(Math.round(baseN * 1.2), minN, maxN);
-            if (scenario === 'pessimistic') return clamp(Math.round(baseN * 0.8), minN, maxN);
+
+            if (state.maxNFromFile != null) {
+                maxN = Math.min(maxN, state.maxNFromFile);
+            }
+
+            if (scenario === 'optimistic') {
+                return clamp(Math.round(baseN * 1.2), minN, maxN);
+            }
+            if (scenario === 'pessimistic') {
+                return clamp(Math.round(baseN * 0.8), minN, maxN);
+            }
             return clamp(baseN, minN, maxN);
         }
 
-        // --- CALC PARAMS (Mainly for flow chain) ---
+        // --- CALC PARAMS ---
         function getCalcParams(selected, scenario, ticker) {
-            // Keeps existing flow logic
             let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: BASE_CHAINS[selected] || ['Steady', 'Steady', 'Steady'] };
             
+            // --- INDEX EXCEPTIONS ---
             if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
                 if (ticker === 'QQQ') res.chain = ['IndexTech', 'IndexTech', 'Steady'];
                 else if (ticker === 'DIA') res.chain = ['IndexValue', 'IndexValue', 'IndexValue'];
@@ -717,6 +729,7 @@
                 return res;
             }
 
+            // --- EXPANSION EXCEPTION ---
             if (selected === 'Expansion') {
                 if (scenario === 'optimistic') {
                     res.chain = ['Expansion', 'Expansion', 'Momentum']; 
@@ -727,11 +740,13 @@
                 return res;
             }
 
+            // --- GENERAL MODIFIERS ---
             if (scenario === 'optimistic') {
                 res.mods = { pe: 1.1, margin: 1.03, growth: 1.1 };
             } else if (scenario === 'pessimistic') {
                 res.mods = { pe: 0.9, margin: 0.97, growth: 0.85 };
             }
+
             return res;
         }
 
@@ -819,17 +834,46 @@
             }
             let p3_dur = modelYears - p1_dur - p2_dur;
 
+            // --- TERMINAL P/S & P/E LOGIC ---
+            // 1. Get ticker data from DB for premium calc
+            const tickerData = GLOBAL_DB[state.currentTicker] || {};
+            
+            // 2. Determine Terminal Theme & Adjustment
+            const termParams = getTerminalParams(userThemeKey, scenario, state.currentTicker);
+            const termTheme = METRICS[termParams.themeKey];
+            const scenarioAdj = termParams.adj;
+
+            // 3. Calculate Premium
+            let psPremium = 1.0;
+            const baseMetricPS = METRICS[userThemeKey].ps; // Base PS of current theme
+            
+            if (tickerData.ps && baseMetricPS) {
+                psPremium = tickerData.ps / baseMetricPS;
+            } else if (tickerData.pe && METRICS[userThemeKey].pe) {
+                psPremium = tickerData.pe / METRICS[userThemeKey].pe; // Fallback to PE premium
+            }
+            psPremium = clamp(psPremium, 0.5, 2.0);
+
+            // 4. Calculate Terminal Margin (Decimal)
+            // We use targetTerm.m because we need the terminal margin for the valuation multiple logic
+            // Although we calculate the loop first to get lastData, let's prep here.
+            // Actually better to run loop first to get exact last year margin.
+
+            // Run loop first
             let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
             const eps0 = startRPS * (forecastMargin / 100);
+            
             tableData.push({ year: 0, phase: 'Start', rps: startRPS, margin: forecastMargin, eps: eps0, flow: -startPrice, payout: startPayout, isExit: false });
+
             const y_p1_end = CONFIG.ANALYST_YEARS + p1_dur;
             const y_p2_end = y_p1_end + p2_dur;
-            
-            // --- DISCOUNTING SETUP ---
+
+            // --- DISCOUNTING SETUP with TAIL PENALTY ---
             let df = 1.0;
 
             for (let i = 1; i <= N; i++) {
                 let g, m, pay, phaseLabel = "Analyst";
+
                 if (['SPY', 'QQQ', 'DIA'].includes(state.currentTicker)) {
                      phaseLabel = "Index Flow";
                      const progressG = Math.min(1, (i - 1) / 10); 
@@ -876,33 +920,12 @@
                 tableData.push({ year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false });
             }
 
-            // --- TERMINAL P/S & P/E LOGIC ---
-            // 1. Get ticker data from DB for premium calc
-            const tickerData = GLOBAL_DB[state.currentTicker] || {};
-            
-            // 2. Determine Terminal Theme & Adjustment
-            const termParams = getTerminalParams(userThemeKey, scenario, state.currentTicker);
-            const termTheme = METRICS[termParams.themeKey];
-            const scenarioAdj = termParams.adj;
-
-            // 3. Calculate Premium
-            let psPremium = 1.0;
-            const baseMetricPS = METRICS[userThemeKey].ps; // Base PS of current theme
-            
-            if (tickerData.ps && baseMetricPS) {
-                psPremium = tickerData.ps / baseMetricPS;
-            } else if (tickerData.pe && METRICS[userThemeKey].pe) {
-                psPremium = tickerData.pe / METRICS[userThemeKey].pe; // Fallback to PE premium
-            }
-            psPremium = clamp(psPremium, 0.5, 2.0);
-
-            // 4. Calculate Terminal Margin (Decimal)
+            // Calculate Final P/S and P/E (Post-loop to use actual terminal margin)
             const lastData = tableData[tableData.length - 1];
             const termMarginDec = (lastData.margin || 1) / 100;
-            // Safety for very low margin to avoid massive PE
             const safeMarginDec = Math.max(termMarginDec, 0.01);
 
-            // 5. Calculate Final P/S and P/E
+            // Base PS from Terminal Theme
             let finalPS = termTheme.ps * psPremium * scenarioAdj;
             finalPS = clamp(finalPS, 0.5, 50);
             
@@ -912,13 +935,10 @@
             // Override if matrix asked for specific PE
             if (overrides.finalPE !== undefined) {
                 finalPE = overrides.finalPE;
-                // Recalculate implied PS for consistency in table if needed, but main driver is PE here
                 finalPS = finalPE * safeMarginDec; 
             }
 
-            // 6. Exit Price
-            // They are mathematically linked now: Exit Price = EPS * PE = (RPS * Margin) * (PS / Margin) = RPS * PS
-            // We use average to smooth rounding errors
+            // Exit Price
             const exitPricePE = lastData.eps * finalPE;
             const exitPricePS = lastData.rps * finalPS;
             const exitPrice = (exitPricePE + exitPricePS) / 2;
@@ -1029,7 +1049,6 @@
                 
                 if (row.isExit) {
                     tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
-                    // UPDATED: Dual formula display
                     tr.innerHTML = `
                         <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
                         <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
@@ -1120,6 +1139,7 @@
 
         // --- CHARTS ---
         function initChart() {
+            // Cash Flow Chart
             const ctx = document.getElementById('cfChart');
             if (ctx) {
                 state.charts.cf = new Chart(ctx.getContext('2d'), {
