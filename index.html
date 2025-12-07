@@ -322,10 +322,10 @@
         const METRICS = {
             'Rocket':    { name: 'Rocket',    growth: 40,    margin: 3.8,   pe: 407.9, ps: 15.39, payout: 0,  N: 20, lcX: 15 }, 
             'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.9,  pe: 24.0,  ps: 8.13,  payout: 15, N: 15, lcX: 30 }, 
-            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 24.0,  pe: 26.0,  ps: 6.20,  payout: 15, N: 15, lcX: 40 }, 
+            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 24.0,  pe: 26.0,  ps: 6.20,  payout: 15, N: 15, lcX: 40 }, // Balanced: PS 6.2 matches QQQ base better
             'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 26.0,  pe: 22.1,  ps: 5.73,  payout: 50, N: 12, lcX: 55 }, 
-            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 14.0,  pe: 22.0,  ps: 3.10,  payout: 45, N: 12, lcX: 65 }, 
-            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5,  pe: 19.5,  ps: 2.45,  payout: 40, N: 12, lcX: 75 }, 
+            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 14.0,  pe: 22.0,  ps: 3.10,  payout: 45, N: 12, lcX: 65 }, // SPY Base raised to reflect modern weighting
+            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5,  pe: 19.5,  ps: 2.45,  payout: 40, N: 12, lcX: 75 }, // DIA Base raised significantly from distressed levels
             'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8,  pe: 13.5,  ps: 2.00,  payout: 75, N: 9,  lcX: 85 },
             'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.1,  pe: 11.7,  ps: 1.42,  payout: 50, N: 6,  lcX: 95 },
             'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 7.5,   pe: 14.0,  ps: 1.05,  payout: 30, N: 9,  lcX: 90 } 
@@ -579,6 +579,7 @@
                 const data = GLOBAL_DB[rawTicker];
                 state.currentTicker = rawTicker; 
                 
+                // FIX: Format numbers to 2 decimal places for display inputs
                 document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
                 document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
                 document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -631,6 +632,7 @@
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
             
+            // FIX: Format numbers to 2 decimal places for reset
             document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
             document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
             document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -990,16 +992,32 @@
                     const simInputs = { ...baseInputs, wacc: row.val };
                     const simResult = runDCFModel(simInputs, theme, scenario, { finalPE: col.val });
                     const cell = document.createElement('div');
+                    
+                    // Calculate Upside
+                    const price = baseInputs.startPrice;
+                    const fv = simResult.fv;
+                    const upside = price > 0 ? ((fv - price) / price) * 100 : 0;
+                    const sign = upside > 0 ? '+' : '';
+                    
                     const isBase = (row.label === 'Base' && col.label === 'Base');
-                    let colorClass = "bg-slate-100 text-slate-600"; 
-                    if (isBase) colorClass = "bg-blue-600 text-white font-bold border border-blue-400 transform scale-105 shadow-lg z-10";
-                    else {
-                        const change = (simResult.fv - baseResult.fv) / (baseResult.fv || 1);
-                        if (change > 0.05) colorClass = "bg-green-100 text-green-800 font-medium border border-green-200"; 
-                        else if (change < -0.05) colorClass = "bg-red-50 text-red-800 font-medium border border-red-100"; 
+                    let bgClass = "bg-slate-50";
+                    let textClass = "text-slate-600";
+                    
+                    if (isBase) {
+                        bgClass = "bg-blue-600 shadow-lg z-10 ring-2 ring-blue-300";
+                        textClass = "text-white";
+                    } else {
+                        if (upside > 5) { bgClass = "bg-green-100"; textClass = "text-green-800"; }
+                        else if (upside < -5) { bgClass = "bg-red-50"; textClass = "text-red-800"; }
                     }
-                    cell.className = `text-[11px] font-mono py-1 rounded-sm cursor-default flex items-center justify-center ${colorClass}`;
-                    cell.innerText = '$' + simResult.fv.toLocaleString('en-US', {maximumFractionDigits: 0});
+
+                    cell.className = `p-1 rounded-sm cursor-default flex flex-col items-center justify-center ${bgClass} ${textClass} text-[10px] leading-tight`;
+                    
+                    cell.innerHTML = `
+                        <div class="font-bold">$${fv.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
+                        <div class="text-[9px] opacity-80">${sign}${upside.toFixed(0)}%</div>
+                    `;
+                    
                     gridEl.appendChild(cell);
                 });
             });
@@ -1015,6 +1033,7 @@
                 
                 if (row.isExit) {
                     tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
+                    // UPDATED: Dual formula display
                     tr.innerHTML = `
                         <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
                         <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
