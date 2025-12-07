@@ -555,9 +555,12 @@
                 if (baseTheme === 'Rocket') {
                     return { themeKey: 'Rocket', adj: 1.15 }; 
                 }
+                // --- NEW FIX: Prevent Expansion -> Rocket shift explicitly ---
                 if (baseTheme === 'Expansion') {
+                     // Stay Expansion, but with premium adj. Do NOT shift left to Rocket.
                      return { themeKey: 'Expansion', adj: 1.15 };
                 }
+
                 if (baseTheme === 'Fallen') {
                     return { themeKey: 'Steady', adj: 1.0 }; 
                 }
@@ -590,15 +593,18 @@
                 document.getElementById('inp-wacc').value = data.wacc ? Number(data.wacc).toFixed(2) : '';
                 document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
                 
+                // UI: Show PE/PS Badges if data available
                 const peBadge = document.getElementById('disp-current-pe');
                 const psBadge = document.getElementById('disp-current-ps');
                 
+                // Helper to calc fallback if missing
                 const calcPE = (data.price / (data.rps * data.margin/100)).toFixed(1);
                 const calcPS = (data.price / data.rps).toFixed(2);
                 
                 peBadge.innerText = data.pe ? `PE: ${data.pe.toFixed(1)}x` : `PE: ${calcPE}x*`;
                 psBadge.innerText = data.ps ? `PS: ${data.ps.toFixed(2)}x` : `PS: ${calcPS}x*`;
                 
+                // Style: Grey if calc, Blue if source
                 peBadge.className = data.pe ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
                 psBadge.className = data.ps ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
 
@@ -838,10 +844,13 @@
             // TIGHTER CLAMP to avoid extreme multiples
             psPremium = clamp(psPremium, 0.5, 2.0);
             
-            // NEW: Mean Reversion for Premium based on Scenario
+            // NEW: Strong Mean Reversion for Premium based on Scenario
+            // If a stock is expensive today, we assume that premium erodes over time
             let reversionFactor = 0.25; // Base: Strong reversion (only 25% of premium survives 10y)
-            if (scenario === 'optimistic') reversionFactor = 0.75; 
-            if (scenario === 'pessimistic') reversionFactor = 0.0; 
+            if (scenario === 'optimistic') reversionFactor = 0.75; // Optimistic: Premium mostly persists
+            if (scenario === 'pessimistic') reversionFactor = 0.0; // Pessimistic: No premium (reverts to avg)
+            
+            // If premium < 1 (stock is cheap), we might be more generous with recovery in Base case
             if (psPremium < 1.0 && scenario === 'base') reversionFactor = 0.5;
 
             const finalPremium = 1 + (psPremium - 1) * reversionFactor;
@@ -923,7 +932,21 @@
             finalPS = clamp(finalPS, 0.5, 50);
             
             let finalPE = finalPS / safeMarginDec;
-            finalPE = clamp(finalPE, 3, 80);
+            
+            // Safety caps
+            let maxPE = 80;
+            if (scenario === 'base') maxPE = 30;       // Base case shouldn't bet on >30x exit
+            if (scenario === 'pessimistic') maxPE = 20; // Pessimistic cap
+            
+            // Apply PE Cap and recalc PS to match
+            if (finalPE > maxPE) {
+                finalPE = maxPE;
+                finalPS = finalPE * safeMarginDec;
+            }
+            
+            // Clamp lower bounds
+            finalPS = Math.max(finalPS, 0.5);
+            finalPE = Math.max(finalPE, 5);
 
             // Override if matrix asked for specific PE
             if (overrides.finalPE !== undefined) {
