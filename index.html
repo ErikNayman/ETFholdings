@@ -318,7 +318,7 @@
         // Current Active DB
         let GLOBAL_DB = { ...DEMO_DB };
 
-        // METRICS with P/S field added
+        // METRICS - UPDATED WITH REALISTIC BASELINES
         const METRICS = {
             'Rocket':    { name: 'Rocket',    growth: 40,    margin: 3.8,   pe: 407.9, ps: 15.39, payout: 0,  N: 20, lcX: 15 }, 
             'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.9,  pe: 24.0,  ps: 8.13,  payout: 15, N: 15, lcX: 30 }, 
@@ -448,7 +448,9 @@
                 let tempMap = {};
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
+                    // Normalize header: remove special chars like dots, trim extra spaces
                     const val = String(cell).toLowerCase().replace('.', '').trim();
+                    
                     for (const [key, candidates] of Object.entries(keyMap)) {
                         const isMatch = candidates.some(c => {
                             if (c.length <= 4 && !c.includes('/')) return val === c; 
