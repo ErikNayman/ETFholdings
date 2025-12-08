@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DCF Pro: Lifecycle & Targets</title>
+    <title>DCF Pro: Reverse Engine</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -50,9 +50,9 @@
 
         <header class="mb-6 flex justify-between items-center">
             <div>
-                <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Lifecycle Engine</h1>
+                <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Reverse Engine</h1>
                 <p class="text-sm text-slate-500">
-                    Оценка стоимости P/S Anchor & Lifecycle.
+                    Анализ ожиданий рынка (Reverse DCF) и жизненный цикл.
                 </p>
             </div>
             <div class="text-right">
@@ -208,6 +208,30 @@
             <!-- RIGHT COLUMN: VISUALS -->
             <div class="lg:col-span-8 space-y-6">
                 
+                <!-- REVERSE DCF (NEW) -->
+                <div class="bg-slate-900 rounded-xl shadow-lg border border-slate-700 p-5 text-white">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="text-sm font-bold text-indigo-300 uppercase tracking-widest mb-1">Обратный DCF: Ожидания Рынка</h3>
+                            <p class="text-xs text-slate-400">Какой рост выручки заложен в текущую цену?</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-400 uppercase">Implied Growth</div>
+                            <div id="rev-growth" class="text-2xl font-bold text-white">--%</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 grid grid-cols-2 gap-4 border-t border-slate-700 pt-4">
+                        <div>
+                            <div class="text-[10px] text-slate-500 mb-1">Ваш Прогноз (Growth)</div>
+                            <div id="rev-user-g" class="text-lg font-bold text-blue-400">--%</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-500 mb-1">Вердикт</div>
+                            <div id="rev-verdict" class="text-sm font-bold text-slate-300">--</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- LIFECYCLE CHART & METRICS -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                     <h3 class="text-sm font-bold text-slate-700 mb-4">Жизненный Цикл и Целевые Показатели</h3>
@@ -555,12 +579,9 @@
                 if (baseTheme === 'Rocket') {
                     return { themeKey: 'Rocket', adj: 1.15 }; 
                 }
-                // --- NEW FIX: Prevent Expansion -> Rocket shift explicitly ---
                 if (baseTheme === 'Expansion') {
-                     // Stay Expansion, but with premium adj. Do NOT shift left to Rocket.
                      return { themeKey: 'Expansion', adj: 1.15 };
                 }
-
                 if (baseTheme === 'Fallen') {
                     return { themeKey: 'Steady', adj: 1.0 }; 
                 }
@@ -585,7 +606,6 @@
                 const data = GLOBAL_DB[rawTicker];
                 state.currentTicker = rawTicker; 
                 
-                // FIX: Format numbers to 2 decimal places for display inputs
                 document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
                 document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
                 document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -593,18 +613,15 @@
                 document.getElementById('inp-wacc').value = data.wacc ? Number(data.wacc).toFixed(2) : '';
                 document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
                 
-                // UI: Show PE/PS Badges if data available
                 const peBadge = document.getElementById('disp-current-pe');
                 const psBadge = document.getElementById('disp-current-ps');
                 
-                // Helper to calc fallback if missing
                 const calcPE = (data.price / (data.rps * data.margin/100)).toFixed(1);
                 const calcPS = (data.price / data.rps).toFixed(2);
                 
                 peBadge.innerText = data.pe ? `PE: ${data.pe.toFixed(1)}x` : `PE: ${calcPE}x*`;
                 psBadge.innerText = data.ps ? `PS: ${data.ps.toFixed(2)}x` : `PS: ${calcPS}x*`;
                 
-                // Style: Grey if calc, Blue if source
                 peBadge.className = data.pe ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
                 psBadge.className = data.ps ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
 
@@ -641,7 +658,6 @@
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
             
-            // FIX: Format numbers to 2 decimal places for reset
             document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
             document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
             document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -762,6 +778,34 @@
             return null; 
         }
 
+        // --- REVERSE DCF (IMPLIED GROWTH) ---
+        function calculateImpliedGrowth(inputs, userTheme, scenario) {
+            // Find growth g such that FV(g) == Price
+            // We binary search g in range [-50, 100]
+            let low = -50;
+            let high = 100;
+            let impliedG = 0;
+            const target = inputs.startPrice;
+            
+            // Limit iterations
+            for(let i=0; i<40; i++) {
+                const mid = (low + high) / 2;
+                // Create temp inputs with new growth
+                const tempInputs = { ...inputs, startGrowth: mid };
+                
+                // Run model (silent override to avoid affecting global state)
+                const res = runDCFModel(tempInputs, userTheme, scenario);
+                
+                if (res.fv > target) {
+                    high = mid;
+                } else {
+                    low = mid;
+                }
+                impliedG = mid;
+            }
+            return impliedG;
+        }
+
         // --- CORE MODEL ---
         function runDCFModel(inputs, userThemeKey, scenario, overrides = {}) {
             const { startPrice, startRPS, startGrowth, forecastMargin, wacc, startPayout, N } = inputs;
@@ -826,9 +870,8 @@
 
             // 3. Calculate Premium
             let psPremium = 1.0;
-            const baseMetricPS = METRICS[userThemeKey].ps; // Base PS of current theme
+            const baseMetricPS = METRICS[userThemeKey].ps; 
             
-            // Prefer current input P/S for premium calc if available
             let currentInputPS = 0;
             if (startRPS > 0 && startPrice > 0) {
                 currentInputPS = startPrice / startRPS;
@@ -839,18 +882,14 @@
             } else if (tickerData.ps && baseMetricPS) {
                 psPremium = tickerData.ps / baseMetricPS;
             } else if (tickerData.pe && METRICS[userThemeKey].pe) {
-                psPremium = tickerData.pe / METRICS[userThemeKey].pe; // Fallback to PE premium
+                psPremium = tickerData.pe / METRICS[userThemeKey].pe; 
             }
-            // TIGHTER CLAMP to avoid extreme multiples
             psPremium = clamp(psPremium, 0.5, 2.0);
             
-            // NEW: Strong Mean Reversion for Premium based on Scenario
-            // If a stock is expensive today, we assume that premium erodes over time
+            // NEW: Mean Reversion for Premium based on Scenario
             let reversionFactor = 0.25; // Base: Strong reversion (only 25% of premium survives 10y)
-            if (scenario === 'optimistic') reversionFactor = 0.75; // Optimistic: Premium mostly persists
-            if (scenario === 'pessimistic') reversionFactor = 0.0; // Pessimistic: No premium (reverts to avg)
-            
-            // If premium < 1 (stock is cheap), we might be more generous with recovery in Base case
+            if (scenario === 'optimistic') reversionFactor = 0.75; 
+            if (scenario === 'pessimistic') reversionFactor = 0.0; 
             if (psPremium < 1.0 && scenario === 'base') reversionFactor = 0.5;
 
             const finalPremium = 1 + (psPremium - 1) * reversionFactor;
@@ -916,7 +955,7 @@
                 tableData.push({ year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false });
             }
 
-            // Calculate Final P/S and P/E (Post-loop to use actual terminal margin)
+            // Calculate Final P/S and P/E
             const lastData = tableData[tableData.length - 1];
             const termMarginDec = (lastData.margin || 1) / 100;
             const safeMarginDec = Math.max(termMarginDec, 0.01);
@@ -924,7 +963,7 @@
             // Base PS from Terminal Theme
             let finalPS = termTheme.ps * finalPremium * scenarioAdj;
             
-            // Limit Base Scenario PS to never exceed Current PS (Prevent "Multiple Expansion" thesis in base case)
+            // Limit Base Scenario PS to never exceed Current PS
             if (scenario === 'base' && currentInputPS > 0) {
                 finalPS = Math.min(finalPS, currentInputPS);
             }
@@ -935,20 +974,17 @@
             
             // Safety caps
             let maxPE = 80;
-            if (scenario === 'base') maxPE = 30;       // Base case shouldn't bet on >30x exit
-            if (scenario === 'pessimistic') maxPE = 20; // Pessimistic cap
+            if (scenario === 'base') maxPE = 30;       
+            if (scenario === 'pessimistic') maxPE = 20; 
             
-            // Apply PE Cap and recalc PS to match
             if (finalPE > maxPE) {
                 finalPE = maxPE;
                 finalPS = finalPE * safeMarginDec;
             }
             
-            // Clamp lower bounds
             finalPS = Math.max(finalPS, 0.5);
             finalPE = Math.max(finalPE, 5);
 
-            // Override if matrix asked for specific PE
             if (overrides.finalPE !== undefined) {
                 finalPE = overrides.finalPE;
                 finalPS = finalPE * safeMarginDec; 
@@ -1007,9 +1043,29 @@
             safeSetText('res-fv', formatCurrency(fv));
             safeSetText('res-exit-pe', isFinite(finalPE) ? finalPE.toFixed(1) + 'x' : '--x');
             
-            // NEW: Display Exit PS
             const psEl = document.getElementById('res-exit-ps');
             if(psEl) psEl.innerText = isFinite(finalPS) ? finalPS.toFixed(1) + 'x' : '--x';
+            
+            // --- NEW REVERSE DCF DISPLAY ---
+            const userTheme = document.getElementById('theme-selector').value;
+            const scenario = state.scenario;
+            const impliedG = calculateImpliedGrowth(inputs, userTheme, scenario);
+            const growthDiff = impliedG - inputs.startGrowth;
+
+            safeSetText('rev-growth', impliedG.toFixed(1) + '%');
+            safeSetText('rev-user-g', inputs.startGrowth.toFixed(1) + '%');
+            
+            const verdictEl = document.getElementById('rev-verdict');
+            if (growthDiff > 5) {
+                verdictEl.innerText = "Рынок перегрет";
+                verdictEl.className = "text-sm font-bold text-red-400";
+            } else if (growthDiff < -2) {
+                verdictEl.innerText = "Маржа безопасности";
+                verdictEl.className = "text-sm font-bold text-green-400";
+            } else {
+                verdictEl.innerText = "Справедливая оценка";
+                verdictEl.className = "text-sm font-bold text-yellow-400";
+            }
         }
 
         function renderSensitivity(baseResult, baseInputs, theme, scenario) {
