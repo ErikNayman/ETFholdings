@@ -222,7 +222,7 @@
                          <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
                             <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
                         </h3>
-                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены на каждый год</span>
+                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены и доходности</span>
                     </div>
                     
                     <!-- SCROLLABLE TABLE FOR RELAY -->
@@ -1322,7 +1322,6 @@
                 updateMCLabel('mc-p50', 'mc-p50-up', p50, upP50);
                 updateMCLabel('mc-p90', 'mc-p90-up', p90, upP90);
 
-                // Update MC button label with P50 upside
                 const mcLabel = document.getElementById('up-monte_carlo');
                 if (mcLabel) {
                     mcLabel.innerText = formatUp(upP50);
