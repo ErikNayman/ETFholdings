@@ -862,6 +862,9 @@
             const w = WEIGHTS[scenario] || WEIGHTS.base;
             const blend = (curr, target, weight) => curr * (1 - weight) + target * weight;
 
+            // S-Curve Helper for smooth transitions
+            const sCurve = (t) => t * t * (3 - 2 * t);
+
             const rawG = (m) => m.growth * mods.growth;
             const rawM = (m) => m.margin * mods.margin;
             
@@ -966,13 +969,17 @@
                         let progress = 0;
                         if (i <= y_p1_end) {
                             phaseLabel = "Phase 1";
-                            progress = (i - CONFIG.ANALYST_YEARS) / Math.max(1, p1_dur);
+                            // S-Curve application
+                            const rawProg = clamp((i - CONFIG.ANALYST_YEARS - 1) / Math.max(1, p1_dur), 0, 1);
+                            progress = sCurve(rawProg);
                             g = startGrowth + (targetMid.g - startGrowth) * progress;
                             m = forecastMargin + (targetMid.m - forecastMargin) * progress;
                             pay = startPayout + (targetMid.p - startPayout) * progress;
                         } else if (i <= y_p2_end) {
                             phaseLabel = "Phase 2";
-                            progress = (i - y_p1_end) / Math.max(1, p2_dur);
+                            // S-Curve application
+                            const rawProg = clamp((i - y_p1_end - 1) / Math.max(1, p2_dur), 0, 1);
+                            progress = sCurve(rawProg);
                             g = targetMid.g + (targetTerm.g - targetMid.g) * progress;
                             m = targetMid.m + (targetTerm.m - targetMid.m) * progress;
                             pay = targetMid.p + (targetTerm.p - targetMid.p) * progress;
