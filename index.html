@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DCF Pro: Reverse Engine</title>
+    <title>DCF Pro: Lifecycle & Targets</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -50,9 +50,9 @@
 
         <header class="mb-6 flex justify-between items-center">
             <div>
-                <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Reverse Engine</h1>
+                <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Lifecycle Engine</h1>
                 <p class="text-sm text-slate-500">
-                    Анализ ожиданий рынка (Reverse DCF) и жизненный цикл.
+                    Оценка стоимости P/S Anchor & Lifecycle.
                 </p>
             </div>
             <div class="text-right">
@@ -168,6 +168,7 @@
                         <button onclick="setScenario('pessimistic')" id="btn-pessimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-red-50 transition-all font-medium text-slate-600">Пессимизм</button>
                         <button onclick="setScenario('base')" id="btn-base" class="flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md transition-all font-bold">Базовый</button>
                         <button onclick="setScenario('optimistic')" id="btn-optimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-green-50 transition-all font-medium text-slate-600">Оптимизм</button>
+                        <button onclick="setScenario('monte_carlo')" id="btn-monte_carlo" class="flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-md font-bold transition-all hover:bg-purple-700">🎲 М-Карло</button>
                     </div>
                     
                     <div class="mt-6 mb-2">
@@ -222,7 +223,7 @@
                     </div>
                     <div class="mt-4 grid grid-cols-2 gap-4 border-t border-slate-700 pt-4">
                         <div>
-                            <div class="text-[10px] text-slate-500 mb-1">Ваш Прогноз (Growth)</div>
+                            <div class="text-[10px] text-slate-500 mb-1">Прогноз аналитиков</div>
                             <div id="rev-user-g" class="text-lg font-bold text-blue-400">--%</div>
                         </div>
                         <div class="text-right">
@@ -269,14 +270,32 @@
                     </div>
                 </div>
 
-                <!-- SENSITIVITY MATRIX -->
+                <!-- SENSITIVITY MATRIX / MONTE CARLO -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                     <div class="flex justify-between items-end mb-2">
-                        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-widest">Матрица Справедливой Цены (PV Today)</h4>
-                        <span class="text-[10px] text-slate-500">Влияние ставки (r) и мультипликатора (P/E)</span>
+                        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-widest" id="sens-title">Матрица Справедливой Цены (PV Today)</h4>
+                        <span class="text-[10px] text-slate-500" id="sens-subtitle">Влияние ставки (r) и мультипликатора (P/E)</span>
                     </div>
                     <div class="grid grid-cols-4 gap-1 text-center select-none" id="sens-grid">
                         <!-- JS Generated -->
+                    </div>
+                    <!-- Monte Carlo Stats Container (Hidden by default) -->
+                    <div id="mc-stats" class="hidden grid-cols-3 gap-4 text-center py-4">
+                        <div class="bg-red-50 p-2 rounded border border-red-100">
+                            <div class="text-[10px] text-red-500 font-bold uppercase">P10 (Pessimistic)</div>
+                            <div class="text-lg font-bold text-slate-700" id="mc-p10">$---</div>
+                            <div class="text-[10px] text-slate-400">90% chance > this</div>
+                        </div>
+                        <div class="bg-blue-50 p-2 rounded border border-blue-200 ring-2 ring-blue-100">
+                            <div class="text-[10px] text-blue-600 font-bold uppercase">P50 (Median)</div>
+                            <div class="text-2xl font-bold text-slate-800" id="mc-p50">$---</div>
+                            <div class="text-[10px] text-slate-400">Base Expectation</div>
+                        </div>
+                        <div class="bg-green-50 p-2 rounded border border-green-100">
+                            <div class="text-[10px] text-green-600 font-bold uppercase">P90 (Optimistic)</div>
+                            <div class="text-lg font-bold text-slate-700" id="mc-p90">$---</div>
+                            <div class="text-[10px] text-slate-400">10% chance > this</div>
+                        </div>
                     </div>
                 </div>
 
@@ -384,6 +403,15 @@
         // Bell Curve for charts
         const bellCurve = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2)));
 
+        // --- RANDOM HELPER for Monte Carlo ---
+        function randomNormal(mean, stdDev) {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+            while(v === 0) v = Math.random();
+            const z = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+            return mean + z * stdDev;
+        }
+
         // --- EXCEL LOGIC ---
         function handleExcelUpload(e) {
             const errEl = document.getElementById('upload-error');
@@ -456,8 +484,6 @@
 
             let headerRowIndex = -1;
             let colMap = {}; 
-            
-            // STRICT MATCHING LOGIC
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
@@ -478,7 +504,6 @@
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
                     const val = String(cell).toLowerCase().replace('.', '').trim();
-                    
                     for (const [key, candidates] of Object.entries(keyMap)) {
                         const isMatch = candidates.some(c => {
                             if (c.length <= 4 && !c.includes('/')) return val === c; 
@@ -561,7 +586,7 @@
             let targetThemeKey = baseTheme;
             let scenarioAdj = 1.0;
 
-            if (scenario === 'base') {
+            if (scenario === 'base' || scenario === 'monte_carlo') {
                 return { themeKey: baseTheme, adj: 1.0 };
             }
 
@@ -746,6 +771,11 @@
             } else if (scenario === 'pessimistic') {
                 res.mods = { pe: 0.9, margin: 0.97, growth: 0.85 };
             }
+            
+            // For Monte Carlo, we use base mods but will jitter them in the loop
+            if (scenario === 'monte_carlo') {
+                res.mods = { pe: 1, margin: 1, growth: 1 };
+            }
 
             return res;
         }
@@ -780,20 +810,14 @@
 
         // --- REVERSE DCF (IMPLIED GROWTH) ---
         function calculateImpliedGrowth(inputs, userTheme, scenario) {
-            // Find growth g such that FV(g) == Price
-            // We binary search g in range [-50, 100]
             let low = -50;
             let high = 100;
             let impliedG = 0;
             const target = inputs.startPrice;
             
-            // Limit iterations
             for(let i=0; i<40; i++) {
                 const mid = (low + high) / 2;
-                // Create temp inputs with new growth
                 const tempInputs = { ...inputs, startGrowth: mid };
-                
-                // Run model (silent override to avoid affecting global state)
                 const res = runDCFModel(tempInputs, userTheme, scenario);
                 
                 if (res.fv > target) {
@@ -817,7 +841,7 @@
             const t2 = METRICS[chainKeys[1]];
             const t3 = METRICS[chainKeys[2]];
 
-            const WEIGHTS = { optimistic: { mid: 0.3 }, base: { mid: 0.5 }, pessimistic:{ mid: 0.8 } };
+            const WEIGHTS = { optimistic: { mid: 0.3 }, base: { mid: 0.5 }, pessimistic:{ mid: 0.8 }, monte_carlo: { mid: 0.5 } };
             const w = WEIGHTS[scenario] || WEIGHTS.base;
             const blend = (curr, target, weight) => curr * (1 - weight) + target * weight;
 
@@ -1070,6 +1094,56 @@
 
         function renderSensitivity(baseResult, baseInputs, theme, scenario) {
             const gridEl = document.getElementById('sens-grid');
+            const mcStatsEl = document.getElementById('mc-stats');
+            const sensTitle = document.getElementById('sens-title');
+            const sensSubtitle = document.getElementById('sens-subtitle');
+
+            // --- MONTE CARLO MODE ---
+            if (scenario === 'monte_carlo') {
+                gridEl.classList.add('hidden');
+                mcStatsEl.classList.remove('hidden');
+                mcStatsEl.classList.add('grid');
+                sensTitle.innerText = "Анализ Рисков (Monte Carlo)";
+                sensSubtitle.innerText = "Распределение справедливой цены (1000 симуляций)";
+                
+                // Run simulations
+                const sims = 1000;
+                const results = [];
+                for(let i=0; i<sims; i++) {
+                    // Randomize Inputs
+                    const simInputs = { ...baseInputs };
+                    simInputs.startGrowth = randomNormal(baseInputs.startGrowth, 2.0); // +/- 2% growth
+                    simInputs.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5); // +/- 1.5% margin
+                    simInputs.wacc = randomNormal(baseInputs.wacc, 0.005); // +/- 0.5% WACC
+                    
+                    // Randomize PE implicitly via slight margin jitter or we need to pass a jitter param to runDCF
+                    // For simplicity, runDCF is deterministic given inputs.
+                    // We can jitter finalPE inside by passing an override? No, better to let runDCF handle logic
+                    // Let's rely on Growth/Margin/WACC volatility.
+                    
+                    const res = runDCFModel(simInputs, theme, 'monte_carlo'); // 'monte_carlo' scenario uses flat mods
+                    if(isFinite(res.fv)) results.push(res.fv);
+                }
+                
+                results.sort((a,b) => a-b);
+                const p10 = results[Math.floor(sims * 0.1)];
+                const p50 = results[Math.floor(sims * 0.5)];
+                const p90 = results[Math.floor(sims * 0.9)];
+                
+                safeSetText('mc-p10', formatCurrency(p10));
+                safeSetText('mc-p50', formatCurrency(p50));
+                safeSetText('mc-p90', formatCurrency(p90));
+                
+                return;
+            }
+
+            // --- STANDARD SENSITIVITY GRID ---
+            gridEl.classList.remove('hidden');
+            mcStatsEl.classList.add('hidden');
+            mcStatsEl.classList.remove('grid');
+            sensTitle.innerText = "Матрица Справедливой Цены (PV Today)";
+            sensSubtitle.innerText = "Влияние ставки (r) и мультипликатора (P/E)";
+
             if (!gridEl) return;
             gridEl.innerHTML = '';
             const waccStep = 0.01, peStep = 1.0;
@@ -1137,7 +1211,6 @@
                 
                 if (row.isExit) {
                     tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
-                    // UPDATED: Dual formula display
                     tr.innerHTML = `
                         <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
                         <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
@@ -1175,7 +1248,6 @@
         }
 
         function renderLifecycleVisuals(result, themeKey, scenario) {
-            // 1. Table
             const t = result.phaseTargets;
             const tbody = document.getElementById('lifecycle-table-body');
             tbody.innerHTML = `
@@ -1199,7 +1271,6 @@
                 </tr>
             `;
 
-            // 2. Chart
             if (!state.charts.lc) return;
             const chart = state.charts.lc;
             
@@ -1210,28 +1281,22 @@
             
             const bell = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2))); 
             
-            // Fixed reference points for ETFs
             const etfData = [
                 { x: METRICS['IndexTech'].lcX, y: bell(METRICS['IndexTech'].lcX), label: 'QQQ' },
                 { x: METRICS['Steady'].lcX, y: bell(METRICS['Steady'].lcX), label: 'SPY' },
                 { x: METRICS['IndexValue'].lcX, y: bell(METRICS['IndexValue'].lcX), label: 'DIA' }
             ];
 
-            // Background theme markers
             const themeData = THEME_ORDER.map(k => ({
                 x: METRICS[k].lcX,
                 y: bell(METRICS[k].lcX)
             }));
             
-            // Update Datasets
-            // 0: Curve, 1: All Themes (Gray), 2: ETFs (Square), 3: Target Company (Big Circle)
-            
             chart.data.datasets[1].data = themeData; 
             chart.data.datasets[2].data = etfData;
             
-            // Target Company Position based on Scenario
             let activeX = baseX;
-            let color = '#3b82f6'; // Base Blue
+            let color = '#3b82f6'; 
             if (scenario === 'optimistic') { activeX = oX; color = '#22c55e'; }
             if (scenario === 'pessimistic') { activeX = pX; color = '#ef4444'; }
             
@@ -1243,7 +1308,7 @@
 
         // --- CHARTS ---
         function initChart() {
-            // Lifecycle Chart Only
+            // Only Lifecycle chart now
             const ctxLc = document.getElementById('lifecycleChart');
             if (ctxLc) {
                 const curveData = [];
@@ -1298,7 +1363,6 @@
                                 enabled: true,
                                 callbacks: {
                                     label: function(context) {
-                                        // Custom logic to show ETF names if available in raw data
                                         const raw = context.raw;
                                         if (raw.label) return raw.label;
                                         return context.dataset.label;
@@ -1324,7 +1388,6 @@
                 startRPS: getVal('inp-rps') || 0,
                 startGrowth: getVal('inp-growth') || 0,
                 forecastMargin: getVal('inp-forecast-margin') || 0,
-                // Check isNaN so 0 is allowed
                 wacc: (isNaN(waccInput) ? 8 : waccInput)/100,
                 startPayout: getVal('inp-payout') || 0,
                 N: parseInt(document.getElementById('slider-years').value) || 15
@@ -1346,13 +1409,21 @@
         function setScenario(s) {
             const themeKey = document.getElementById('theme-selector').value;
             state.scenario = s;
-            ['pessimistic', 'base', 'optimistic'].forEach(id => {
+            ['pessimistic', 'base', 'optimistic', 'monte_carlo'].forEach(id => {
                 const btn = document.getElementById('btn-' + id);
                 if (!btn) return;
                 const isAct = (id === s);
-                if (id === 'pessimistic') btn.className = isAct ? "flex-1 py-3 text-xs bg-red-100 text-red-800 border-red-300 rounded-lg shadow-inner font-bold border" : "flex-1 py-3 text-xs border rounded-lg hover:bg-slate-50 transition-all font-medium text-slate-600";
-                else if (id === 'optimistic') btn.className = isAct ? "flex-1 py-3 text-xs bg-green-100 text-green-800 border-green-300 rounded-lg shadow-inner font-bold border" : "flex-1 py-3 text-xs border rounded-lg hover:bg-green-50 transition-all font-medium text-slate-600";
-                else btn.className = isAct ? "flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md font-bold" : "flex-1 py-3 text-xs border rounded-lg hover:bg-slate-50 transition-all font-medium text-slate-600";
+                // Reset classes
+                btn.className = "flex-1 py-3 text-xs border rounded-lg transition-all font-medium text-slate-600 hover:bg-slate-50"; 
+                
+                if (isAct) {
+                     if (id === 'pessimistic') btn.className = "flex-1 py-3 text-xs bg-red-100 text-red-800 border-red-300 rounded-lg shadow-inner font-bold border";
+                     else if (id === 'optimistic') btn.className = "flex-1 py-3 text-xs bg-green-100 text-green-800 border-green-300 rounded-lg shadow-inner font-bold border";
+                     else if (id === 'monte_carlo') btn.className = "flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-inner font-bold border transition-all hover:bg-purple-700";
+                     else btn.className = "flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md font-bold";
+                } else {
+                     if (id === 'monte_carlo') btn.className = "flex-1 py-3 text-xs text-purple-600 border-purple-200 border rounded-lg hover:bg-purple-50 transition-all font-medium";
+                }
             });
             const params = getCalcParams(themeKey, s);
             const slider = document.getElementById('slider-years');
