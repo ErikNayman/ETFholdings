@@ -215,31 +215,30 @@
                         </div>
                     </div>
                 </div>
-
+                
                 <!-- NEW: BUYER'S RELAY BLOCK -->
                 <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-4 shadow-sm">
-                    <h3 class="text-xs font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2">
-                        <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
-                    </h3>
-                    <div class="grid grid-cols-3 gap-2 text-center">
-                        <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
-                            <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Сегодня (Y0)</div>
-                            <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-p0">$---</div>
-                            <div class="text-[9px] text-slate-500">Buy Price</div>
-                        </div>
-                        <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
-                            <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Y5 (Mid)</div>
-                            <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-p5">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-y5">Yield: --%</div>
-                        </div>
-                        <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
-                            <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Y<span id="relay-n-label">N</span> (Exit)</div>
-                            <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-pn">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-yn">Yield: --%</div>
-                        </div>
+                    <div class="flex justify-between items-center mb-3">
+                         <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
+                            <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
+                        </h3>
+                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены на каждый год</span>
                     </div>
-                    <div class="mt-2 text-[9px] text-slate-500 text-center italic leading-tight px-2">
-                        Справедливая цена и доходность (IRR) для каждого этапа владения
+                    
+                    <!-- SCROLLABLE TABLE FOR RELAY -->
+                    <div class="overflow-y-auto custom-scroll" style="max-height: 180px;">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
+                                <tr>
+                                    <th class="py-1 px-2">Год</th>
+                                    <th class="py-1 text-right">Fair Price</th>
+                                    <th class="py-1 text-right pr-2">Implied P/E</th>
+                                </tr>
+                            </thead>
+                            <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
+                                <!-- JS Populated -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -1097,72 +1096,55 @@
             }
 
             // --- BUYER'S RELAY (RECURSIVE VALUATION) ---
-            let pv5 = 0;
-            if (N > 5) {
-                let dfRelay = 1.0;
-                for (let k = 6; k <= N; k++) {
-                     let r = wacc;
-                     if (k > TAIL_PENALTY.START_YEAR) r += TAIL_PENALTY.EXTRA_DR;
-                     dfRelay *= (1 + r);
-                     pv5 += tableData[k].flow / dfRelay;
-                }
-            } else {
-                if (N === 5) pv5 = exitPrice; 
-            }
+            let relay = [];
+            // Create full timeline of prices/yields
+            
+            if (scenario !== 'monte_carlo') {
+                // Calculate Price trajectory
+                // For each year t from 0 to N
+                for (let t = 0; t <= N; t++) {
+                    let pvFuture = 0;
+                    let dfRelay = 1.0;
+                    
+                    // Iterate forward flows relative to year t
+                    for (let k = t + 1; k <= N; k++) {
+                         let r = wacc;
+                         if (k > TAIL_PENALTY.START_YEAR) r += TAIL_PENALTY.EXTRA_DR;
+                         dfRelay *= (1 + r);
+                         
+                         let flow = tableData[k].flow; 
+                         
+                         if (k === N) {
+                             // Add exit price from the EXIT row (index N+1 in tableData array, but logic is N-based)
+                             // Actually, tableData has N+1 rows (0..N). The Exit row is pushed LAST.
+                             // Let's find it safely.
+                             const exitRow = tableData.find(r => r.isExit);
+                             if (exitRow) flow += exitRow.flow; 
+                         }
+                         
+                         pvFuture += flow / dfRelay;
+                    }
+                    
+                    // Special case for Year N: Price is Exit Price
+                    if (t === N) pvFuture = exitPrice;
 
-            const relay = {
-                p0: startPrice,
-                p5: pv5, 
-                pn: exitPrice, 
-                y0: null, 
-                y5: null
-            };
+                    // Calculate Implied Yield (Forward IRR) from t to N
+                    // ... (simplified as null for now to keep table clean, or calc if needed)
+                    // Let's just calc PE based on forward price.
+                    
+                    relay.push({
+                        year: t,
+                        price: pvFuture,
+                        pe: (tableData[t] && tableData[t].eps > 0) ? pvFuture / tableData[t].eps : 0
+                    });
+                }
+            }
 
             const pvExit = exitPrice / df;
             const fv = pvDiv + pvExit;
             const irr = calculateIRR(irrStream);
             let upside = null; if (startPrice > 0 && isFinite(fv)) upside = ((fv - startPrice) / startPrice) * 100;
             let spread = null; if (irr != null) spread = (irr - wacc) * 100;
-            
-            relay.y0 = irr;
-            
-            // Calculate Implied Yield for Buyer 2 (Year 5 to N)
-            if (N > 5) {
-                let stream5_N = [-pv5];
-                for(let k=6; k <= N; k++) { // Fixed loop condition to include last cash flow (exit)
-                    // k is index in tableData. tableData[6] is Year 6 flow. tableData[N+1] is Exit.
-                    // Wait, tableData indices: 0=Year0, 1=Year1... N=YearN(Div), N+1=YearN(Exit)
-                    
-                    // We need flow at year k (dividend). 
-                    // And finally exit at year N.
-                    
-                    // The loop above for pv5 summed tableData[k].flow for k=6..N 
-                    // AND handled Exit separately because tableData[N] only has Div.
-                    
-                    // Let's reuse tableData correctly.
-                    // tableData[k] where k=1..N represents year k dividend.
-                    // tableData[N+1] represents exit price.
-                    
-                    // The stream needs:
-                    // Year 5 (t=0 for Buyer 2): -PV5
-                    // Year 6 (t=1): Div6
-                    // ...
-                    // Year N (t=N-5): DivN + ExitPrice
-                    
-                    if (k <= N) {
-                         stream5_N.push(tableData[k].flow);
-                    }
-                }
-                // Add exit price to the last flow
-                const exitRow = tableData.find(r => r.isExit);
-                if (exitRow) {
-                     stream5_N[stream5_N.length - 1] += exitRow.flow;
-                }
-                
-                relay.y5 = calculateIRR(stream5_N);
-            } else {
-                relay.y5 = null;
-            }
             
             return { tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE, finalPS, phaseTargets, themeLCX: METRICS[params.themeKey].lcX, inputs, relay };
         }
@@ -1191,16 +1173,23 @@
             const psEl = document.getElementById('res-exit-ps');
             if(psEl) psEl.innerText = isFinite(finalPS) ? finalPS.toFixed(1) + 'x' : '--x';
             
-            // --- RENDER RELAY ---
-            if (relay) {
-                safeSetText('relay-p0', formatCurrency(relay.p0));
-                safeSetText('relay-p5', formatCurrency(relay.p5)); 
-                safeSetText('relay-pn', formatCurrency(relay.pn));
-                safeSetText('relay-n-label', inputs.N);
-                
-                const fmtY = (y) => y ? (y*100).toFixed(1) + '%' : '--%';
-                safeSetText('relay-y5', 'Yield: ' + fmtY(relay.y0)); // Using Yield 0-5 (IRR) for first
-                safeSetText('relay-yn', 'Yield: ' + fmtY(relay.y5)); // Yield 5-N for second
+            // --- RENDER RELAY TABLE ---
+            const relayBody = document.getElementById('relay-table-body');
+            if (relayBody && relay && relay.length > 0) {
+                relayBody.innerHTML = '';
+                relay.forEach(r => {
+                    const row = document.createElement('tr');
+                    const peTxt = r.pe > 0 ? r.pe.toFixed(1) + 'x' : '-';
+                    
+                    row.innerHTML = `
+                        <td class="py-1 px-2 border-b border-indigo-50 font-medium text-indigo-900">Y${r.year}</td>
+                        <td class="py-1 text-right border-b border-indigo-50 font-bold text-indigo-700">${formatCurrency(r.price)}</td>
+                        <td class="py-1 text-right pr-2 border-b border-indigo-50 text-slate-500 font-mono">${peTxt}</td>
+                    `;
+                    relayBody.appendChild(row);
+                });
+            } else if (relayBody) {
+                relayBody.innerHTML = '<tr><td colspan="3" class="text-center py-2 text-slate-400">Нет данных для сценария Monte Carlo</td></tr>';
             }
             
             // --- NEW REVERSE DCF DISPLAY ---
@@ -1238,7 +1227,6 @@
                 if (!el) return;
                 
                 if (label === 'monte_carlo') {
-                    // Monte Carlo upside calculated below
                     return;
                 }
                 
@@ -1249,7 +1237,6 @@
                 else el.className = "text-[10px] text-center mt-1 font-bold text-red-400";
             };
 
-            // Calculate upsides for buttons
             ['pessimistic', 'base', 'optimistic'].forEach(s => {
                 const res = runDCFModel(baseInputs, theme, s);
                 const up = baseInputs.startPrice > 0 ? ((res.fv - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
@@ -1305,7 +1292,6 @@
                 updateMCLabel('mc-p50', 'mc-p50-up', p50, upP50);
                 updateMCLabel('mc-p90', 'mc-p90-up', p90, upP90);
 
-                // Update MC button label with P50 upside
                 const mcLabel = document.getElementById('up-monte_carlo');
                 if (mcLabel) {
                     mcLabel.innerText = formatUp(upP50);
@@ -1315,9 +1301,7 @@
                 
                 return;
             } else {
-                 // Clear MC label if not active, or keep last calculated? Better calculate it too for consistency
-                 // Run quick MC for label
-                const sims = 100; // faster for label
+                const sims = 100; 
                 const results = [];
                 for(let i=0; i<sims; i++) {
                     const simInputs = { ...baseInputs };
