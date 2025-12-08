@@ -215,33 +215,6 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- NEW: BUYER'S RELAY BLOCK -->
-                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-4">
-                    <h3 class="text-xs font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2">
-                        <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
-                    </h3>
-                    <div class="grid grid-cols-3 gap-2 text-center">
-                        <div class="bg-white p-2 rounded shadow-sm">
-                            <div class="text-[9px] text-slate-400 uppercase">Сегодня (Y0)</div>
-                            <div class="font-bold text-indigo-900 text-sm" id="relay-p0">$---</div>
-                            <div class="text-[9px] text-slate-500">Buy Price</div>
-                        </div>
-                        <div class="bg-white p-2 rounded shadow-sm">
-                            <div class="text-[9px] text-slate-400 uppercase">Y5 (Mid)</div>
-                            <div class="font-bold text-indigo-900 text-sm" id="relay-p5">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-y5">Yield: --%</div>
-                        </div>
-                        <div class="bg-white p-2 rounded shadow-sm">
-                            <div class="text-[9px] text-slate-400 uppercase">Y<span id="relay-n-label">N</span> (Exit)</div>
-                            <div class="font-bold text-indigo-900 text-sm" id="relay-pn">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-yn">Yield: --%</div>
-                        </div>
-                    </div>
-                    <div class="mt-2 text-[9px] text-slate-500 text-center italic">
-                        Ожидаемая доходность для каждого следующего покупателя
-                    </div>
-                </div>
 
             </div>
 
@@ -550,8 +523,6 @@
                     const val = String(cell).toLowerCase().replace('.', '').trim();
                     
                     for (const [key, candidates] of Object.entries(keyMap)) {
-                        // Strict check logic: <=4 chars and no slash requires exact match
-                        // Exception: 'n term' is longer but specific
                         const isMatch = candidates.some(c => {
                             if (c.length <= 4 && !c.includes('/')) return val === c; 
                             return val.includes(c);
@@ -715,14 +686,9 @@
                     state.maxNFromFile = null;
                 }
 
-                // Add explicit refresh of calculations immediately after load
-                state.scenario = 'base'; 
-                
-                // Clear any existing flash class first
-                panelEl.classList.remove('flash-update');
-                void panelEl.offsetWidth; // Trigger reflow
                 panelEl.classList.add('flash-update');
-                
+                setTimeout(() => panelEl.classList.remove('flash-update'), 1000);
+                state.scenario = 'base'; 
                 setScenario('base'); 
                 document.getElementById('btn-reset').classList.remove('hidden');
             } else {
@@ -1134,25 +1100,22 @@
             // --- NEW REVERSE DCF DISPLAY ---
             const userTheme = document.getElementById('theme-selector').value;
             const scenario = state.scenario;
-            // calculateImpliedGrowth is heavy, maybe skip if Monte Carlo?
-            if (scenario !== 'monte_carlo') {
-                const impliedG = calculateImpliedGrowth(inputs, userTheme, scenario);
-                const growthDiff = impliedG - inputs.startGrowth;
+            const impliedG = calculateImpliedGrowth(inputs, userTheme, scenario);
+            const growthDiff = impliedG - inputs.startGrowth;
 
-                safeSetText('rev-growth', impliedG.toFixed(1) + '%');
-                safeSetText('rev-user-g', inputs.startGrowth.toFixed(1) + '%');
-                
-                const verdictEl = document.getElementById('rev-verdict');
-                if (growthDiff > 5) {
-                    verdictEl.innerText = "Рынок перегрет";
-                    verdictEl.className = "text-sm font-bold text-red-400";
-                } else if (growthDiff < -2) {
-                    verdictEl.innerText = "Маржа безопасности";
-                    verdictEl.className = "text-sm font-bold text-green-400";
-                } else {
-                    verdictEl.innerText = "Справедливая оценка";
-                    verdictEl.className = "text-sm font-bold text-yellow-400";
-                }
+            safeSetText('rev-growth', impliedG.toFixed(1) + '%');
+            safeSetText('rev-user-g', inputs.startGrowth.toFixed(1) + '%');
+            
+            const verdictEl = document.getElementById('rev-verdict');
+            if (growthDiff > 5) {
+                verdictEl.innerText = "Рынок перегрет";
+                verdictEl.className = "text-sm font-bold text-red-400";
+            } else if (growthDiff < -2) {
+                verdictEl.innerText = "Маржа безопасности";
+                verdictEl.className = "text-sm font-bold text-green-400";
+            } else {
+                verdictEl.innerText = "Справедливая оценка";
+                verdictEl.className = "text-sm font-bold text-yellow-400";
             }
         }
 
