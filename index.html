@@ -222,7 +222,7 @@
                          <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
                             <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
                         </h3>
-                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены и доходности</span>
+                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены на каждый год</span>
                     </div>
                     
                     <!-- SCROLLABLE TABLE FOR RELAY -->
@@ -231,7 +231,7 @@
                             <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
                                 <tr>
                                     <th class="py-1 px-2">Год</th>
-                                    <th class="py-1 text-right">Price</th>
+                                    <th class="py-1 text-right">Fair Price</th>
                                     <th class="py-1 text-right">P/E</th>
                                     <th class="py-1 text-right">P/S</th>
                                     <th class="py-1 text-right pr-2">Yield (YoY)</th>
@@ -1322,6 +1322,7 @@
                 updateMCLabel('mc-p50', 'mc-p50-up', p50, upP50);
                 updateMCLabel('mc-p90', 'mc-p90-up', p90, upP90);
 
+                // Update MC button label with P50 upside
                 const mcLabel = document.getElementById('up-monte_carlo');
                 if (mcLabel) {
                     mcLabel.innerText = formatUp(upP50);
@@ -1414,6 +1415,53 @@
                     
                     gridEl.appendChild(cell);
                 });
+            });
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                if (row.isExit) {
+                    tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
+                    // UPDATED: Dual formula display
+                    tr.innerHTML = `
+                        <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
+                        <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
+                        <td class="px-4 py-2 text-right">
+                            <div class="text-[10px] text-slate-500">RPS x P/S</div>
+                            <div class="font-mono text-indigo-800">${formatCurrency(row.rps)} x ${row.finalPS.toFixed(1)}x</div>
+                        </td>
+                         <td class="px-4 py-2 text-right">
+                            <div class="text-[10px] text-slate-500">EPS x P/E</div>
+                            <div class="font-mono text-indigo-800">${formatCurrency(row.eps)} x ${row.finalPE.toFixed(1)}x</div>
+                        </td>
+                        <td class="px-4 py-2 text-right text-indigo-400" colspan="2">=</td>
+                        <td class="px-4 py-2 text-right font-bold text-indigo-700 text-lg">${formatCurrency(row.flow)}</td>
+                    `;
+                } else {
+                    if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
+                    else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
+                    
+                    const usd = n => formatCurrency(n);
+                    const pct = n => formatPercent(n);
+                    const payoutTxt = row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
+
+                    tr.innerHTML = `
+                        <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
+                        <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.rps)}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : pct(row.margin)}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.eps)}</td>
+                        <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
+                        <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${usd(row.flow)}</td>
+                    `;
+                }
+                tbody.appendChild(tr);
             });
         }
 
