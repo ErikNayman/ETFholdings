@@ -296,17 +296,20 @@
                         <div class="bg-red-50 p-2 rounded border border-red-100">
                             <div class="text-[10px] text-red-500 font-bold uppercase">P10 (Pessimistic)</div>
                             <div class="text-lg font-bold text-slate-700" id="mc-p10">$---</div>
-                            <div class="text-[10px] text-slate-400">90% chance > this</div>
+                            <div class="text-[10px] font-bold" id="mc-p10-up">--%</div>
+                            <div class="text-[9px] text-slate-400">90% chance > this</div>
                         </div>
                         <div class="bg-blue-50 p-2 rounded border border-blue-200 ring-2 ring-blue-100">
                             <div class="text-[10px] text-blue-600 font-bold uppercase">P50 (Median)</div>
                             <div class="text-2xl font-bold text-slate-800" id="mc-p50">$---</div>
-                            <div class="text-[10px] text-slate-400">Base Expectation</div>
+                            <div class="text-[10px] font-bold" id="mc-p50-up">--%</div>
+                            <div class="text-[9px] text-slate-400">Base Expectation</div>
                         </div>
                         <div class="bg-green-50 p-2 rounded border border-green-100">
                             <div class="text-[10px] text-green-600 font-bold uppercase">P90 (Optimistic)</div>
                             <div class="text-lg font-bold text-slate-700" id="mc-p90">$---</div>
-                            <div class="text-[10px] text-slate-400">10% chance > this</div>
+                            <div class="text-[10px] font-bold" id="mc-p90-up">--%</div>
+                            <div class="text-[9px] text-slate-400">10% chance > this</div>
                         </div>
                     </div>
                 </div>
@@ -1171,17 +1174,34 @@
                 const p50 = results[Math.floor(sims * 0.5)];
                 const p90 = results[Math.floor(sims * 0.9)];
                 
-                safeSetText('mc-p10', formatCurrency(p10));
-                safeSetText('mc-p50', formatCurrency(p50));
-                safeSetText('mc-p90', formatCurrency(p90));
+                // Add percentages
+                const upP10 = baseInputs.startPrice > 0 ? ((p10 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                const upP50 = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                const upP90 = baseInputs.startPrice > 0 ? ((p90 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                
+                const formatUp = (val) => {
+                    const sign = val > 0 ? '+' : '';
+                    return `${sign}${val.toFixed(1)}%`;
+                };
+
+                const updateMCLabel = (idPrice, idUp, val, upVal) => {
+                    safeSetText(idPrice, formatCurrency(val));
+                    const upEl = document.getElementById(idUp);
+                    if (upEl) {
+                         upEl.innerText = formatUp(upVal);
+                         upEl.className = upVal >= 0 ? "text-[10px] font-bold text-green-600" : "text-[10px] font-bold text-red-500";
+                    }
+                }
+
+                updateMCLabel('mc-p10', 'mc-p10-up', p10, upP10);
+                updateMCLabel('mc-p50', 'mc-p50-up', p50, upP50);
+                updateMCLabel('mc-p90', 'mc-p90-up', p90, upP90);
 
                 // Update MC button label with P50 upside
-                const p50Upside = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
                 const mcLabel = document.getElementById('up-monte_carlo');
                 if (mcLabel) {
-                    const sign = p50Upside > 0 ? '+' : '';
-                    mcLabel.innerText = `${sign}${p50Upside.toFixed(1)}%`;
-                    if (p50Upside > 0) mcLabel.className = "text-[10px] text-center mt-1 font-bold text-green-500";
+                    mcLabel.innerText = formatUp(upP50);
+                    if (upP50 > 0) mcLabel.className = "text-[10px] text-center mt-1 font-bold text-green-500";
                     else mcLabel.className = "text-[10px] text-center mt-1 font-bold text-red-400";
                 }
                 
