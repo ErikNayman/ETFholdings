@@ -217,29 +217,29 @@
                 </div>
                 
                 <!-- BUYER'S RELAY BLOCK -->
-                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-4">
+                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-4 shadow-sm">
                     <h3 class="text-xs font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2">
                         <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
                     </h3>
                     <div class="grid grid-cols-3 gap-2 text-center">
-                        <div class="bg-white p-2 rounded shadow-sm">
-                            <div class="text-[9px] text-slate-400 uppercase">Сегодня (Y0)</div>
-                            <div class="font-bold text-indigo-900 text-sm" id="relay-p0">$---</div>
+                        <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
+                            <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Сегодня (Y0)</div>
+                            <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-p0">$---</div>
                             <div class="text-[9px] text-slate-500">Buy Price</div>
                         </div>
-                        <div class="bg-white p-2 rounded shadow-sm">
-                            <div class="text-[9px] text-slate-400 uppercase">Y5 (Mid)</div>
-                            <div class="font-bold text-indigo-900 text-sm" id="relay-p5">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-y5">Yield: --%</div>
+                        <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
+                            <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Y5 (Mid)</div>
+                            <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-p5">$---</div>
+                            <div class="text-[9px] font-bold text-green-600" id="relay-y0">Yield 0-5: --%</div>
                         </div>
-                        <div class="bg-white p-2 rounded shadow-sm">
-                            <div class="text-[9px] text-slate-400 uppercase">Y<span id="relay-n-label">N</span> (Exit)</div>
-                            <div class="font-bold text-indigo-900 text-sm" id="relay-pn">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-yn">Yield: --%</div>
+                        <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
+                            <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Y<span id="relay-n-label">N</span> (Exit)</div>
+                            <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-pn">$---</div>
+                            <div class="text-[9px] font-bold text-green-600" id="relay-yn">Yield 5-N: --%</div>
                         </div>
                     </div>
-                    <div class="mt-2 text-[9px] text-slate-500 text-center italic">
-                        Ожидаемая доходность для каждого следующего покупателя
+                    <div class="mt-2 text-[9px] text-slate-500 text-center italic leading-tight px-2">
+                        Справедливая цена и доходность (IRR) для каждого этапа владения
                     </div>
                 </div>
 
@@ -1114,7 +1114,8 @@
                 p0: startPrice,
                 p5: pv5, 
                 pn: exitPrice, 
-                y0: null // Will fill after IRR calc
+                y0: null, 
+                y5: null
             };
 
             const pvExit = exitPrice / df;
@@ -1124,6 +1125,17 @@
             let spread = null; if (irr != null) spread = (irr - wacc) * 100;
             
             relay.y0 = irr;
+            
+            // Calculate Implied Yield for Buyer 2 (Year 5 to N)
+            if (N > 5) {
+                let stream5_N = [-pv5];
+                for(let k=6; k<=N; k++) {
+                    stream5_N.push(tableData[k].flow);
+                }
+                relay.y5 = calculateIRR(stream5_N);
+            } else {
+                relay.y5 = null;
+            }
             
             return { tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE, finalPS, phaseTargets, themeLCX: METRICS[params.themeKey].lcX, inputs, relay };
         }
@@ -1160,8 +1172,8 @@
                 safeSetText('relay-n-label', inputs.N);
                 
                 const fmtY = (y) => y ? (y*100).toFixed(1) + '%' : '--%';
-                safeSetText('relay-y5', 'Yield: ' + fmtY(relay.y0)); 
-                safeSetText('relay-yn', 'Yield: ' + fmtY(relay.y0));
+                safeSetText('relay-y0', 'Yield 0-5: ' + fmtY(relay.y0)); // Yield for first buyer
+                safeSetText('relay-yn', 'Yield 5-N: ' + fmtY(relay.y5)); // Yield for second buyer
             }
             
             // --- NEW REVERSE DCF DISPLAY ---
