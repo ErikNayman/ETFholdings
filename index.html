@@ -215,8 +215,8 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- BUYER'S RELAY BLOCK -->
+
+                <!-- NEW: BUYER'S RELAY BLOCK -->
                 <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-4 shadow-sm">
                     <h3 class="text-xs font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2">
                         <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
@@ -230,12 +230,12 @@
                         <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
                             <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Y5 (Mid)</div>
                             <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-p5">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-y0">Yield 0-5: --%</div>
+                            <div class="text-[9px] font-bold text-green-600" id="relay-y5">Yield: --%</div>
                         </div>
                         <div class="bg-white p-2 rounded shadow-sm border border-indigo-100">
                             <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Y<span id="relay-n-label">N</span> (Exit)</div>
                             <div class="font-bold text-indigo-900 text-sm mt-1" id="relay-pn">$---</div>
-                            <div class="text-[9px] font-bold text-green-600" id="relay-yn">Yield 5-N: --%</div>
+                            <div class="text-[9px] font-bold text-green-600" id="relay-yn">Yield: --%</div>
                         </div>
                     </div>
                     <div class="mt-2 text-[9px] text-slate-500 text-center italic leading-tight px-2">
@@ -448,7 +448,7 @@
         // --- RANDOM HELPER for Monte Carlo ---
         function randomNormal(mean, stdDev) {
             let u = 0, v = 0;
-            while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+            while(u === 0) u = Math.random(); 
             while(v === 0) v = Math.random();
             const z = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
             return mean + z * stdDev;
@@ -1129,9 +1129,36 @@
             // Calculate Implied Yield for Buyer 2 (Year 5 to N)
             if (N > 5) {
                 let stream5_N = [-pv5];
-                for(let k=6; k<=N; k++) {
-                    stream5_N.push(tableData[k].flow);
+                for(let k=6; k <= N; k++) { // Fixed loop condition to include last cash flow (exit)
+                    // k is index in tableData. tableData[6] is Year 6 flow. tableData[N+1] is Exit.
+                    // Wait, tableData indices: 0=Year0, 1=Year1... N=YearN(Div), N+1=YearN(Exit)
+                    
+                    // We need flow at year k (dividend). 
+                    // And finally exit at year N.
+                    
+                    // The loop above for pv5 summed tableData[k].flow for k=6..N 
+                    // AND handled Exit separately because tableData[N] only has Div.
+                    
+                    // Let's reuse tableData correctly.
+                    // tableData[k] where k=1..N represents year k dividend.
+                    // tableData[N+1] represents exit price.
+                    
+                    // The stream needs:
+                    // Year 5 (t=0 for Buyer 2): -PV5
+                    // Year 6 (t=1): Div6
+                    // ...
+                    // Year N (t=N-5): DivN + ExitPrice
+                    
+                    if (k <= N) {
+                         stream5_N.push(tableData[k].flow);
+                    }
                 }
+                // Add exit price to the last flow
+                const exitRow = tableData.find(r => r.isExit);
+                if (exitRow) {
+                     stream5_N[stream5_N.length - 1] += exitRow.flow;
+                }
+                
                 relay.y5 = calculateIRR(stream5_N);
             } else {
                 relay.y5 = null;
@@ -1172,8 +1199,8 @@
                 safeSetText('relay-n-label', inputs.N);
                 
                 const fmtY = (y) => y ? (y*100).toFixed(1) + '%' : '--%';
-                safeSetText('relay-y0', 'Yield 0-5: ' + fmtY(relay.y0)); // Yield for first buyer
-                safeSetText('relay-yn', 'Yield 5-N: ' + fmtY(relay.y5)); // Yield for second buyer
+                safeSetText('relay-y5', 'Yield: ' + fmtY(relay.y0)); // Using Yield 0-5 (IRR) for first
+                safeSetText('relay-yn', 'Yield: ' + fmtY(relay.y5)); // Yield 5-N for second
             }
             
             // --- NEW REVERSE DCF DISPLAY ---
