@@ -164,11 +164,23 @@
                 <!-- SCENARIO & RESULTS -->
                 <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-4 ring-1 ring-slate-200">
                     <h3 class="text-sm font-bold text-slate-700 uppercase mb-3">2. Сценарный Двигатель</h3>
-                    <div class="flex space-x-2 mb-6">
-                        <button onclick="setScenario('pessimistic')" id="btn-pessimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-red-50 transition-all font-medium text-slate-600">Пессимизм</button>
-                        <button onclick="setScenario('base')" id="btn-base" class="flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md transition-all font-bold">Базовый</button>
-                        <button onclick="setScenario('optimistic')" id="btn-optimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-green-50 transition-all font-medium text-slate-600">Оптимизм</button>
-                        <button onclick="setScenario('monte_carlo')" id="btn-monte_carlo" class="flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-md font-bold transition-all hover:bg-purple-700">🎲 М-Карло</button>
+                    <div class="grid grid-cols-4 gap-2 mb-6">
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('pessimistic')" id="btn-pessimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-red-50 transition-all font-medium text-slate-600">Пессимизм</button>
+                            <div id="up-pessimistic" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('base')" id="btn-base" class="flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md transition-all font-bold">Базовый</button>
+                            <div id="up-base" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('optimistic')" id="btn-optimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-green-50 transition-all font-medium text-slate-600">Оптимизм</button>
+                            <div id="up-optimistic" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('monte_carlo')" id="btn-monte_carlo" class="flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-md font-bold transition-all hover:bg-purple-700">🎲 М-Карло</button>
+                            <div id="up-monte_carlo" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
                     </div>
                     
                     <div class="mt-6 mb-2">
@@ -209,7 +221,7 @@
             <!-- RIGHT COLUMN: VISUALS -->
             <div class="lg:col-span-8 space-y-6">
                 
-                <!-- REVERSE DCF (NEW) -->
+                <!-- REVERSE DCF -->
                 <div class="bg-slate-900 rounded-xl shadow-lg border border-slate-700 p-5 text-white">
                     <div class="flex justify-between items-start">
                         <div>
@@ -484,6 +496,8 @@
 
             let headerRowIndex = -1;
             let colMap = {}; 
+            
+            // STRICT MATCHING LOGIC
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
@@ -504,6 +518,7 @@
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
                     const val = String(cell).toLowerCase().replace('.', '').trim();
+                    
                     for (const [key, candidates] of Object.entries(keyMap)) {
                         const isMatch = candidates.some(c => {
                             if (c.length <= 4 && !c.includes('/')) return val === c; 
@@ -631,6 +646,7 @@
                 const data = GLOBAL_DB[rawTicker];
                 state.currentTicker = rawTicker; 
                 
+                // FIX: Format numbers to 2 decimal places for display inputs
                 document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
                 document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
                 document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -683,6 +699,7 @@
             if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
             const data = GLOBAL_DB[state.currentTicker];
             
+            // FIX: Format numbers to 2 decimal places for reset
             document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
             document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
             document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
@@ -1097,6 +1114,30 @@
             const mcStatsEl = document.getElementById('mc-stats');
             const sensTitle = document.getElementById('sens-title');
             const sensSubtitle = document.getElementById('sens-subtitle');
+            
+            const renderScenarioLabel = (label, upside) => {
+                const el = document.getElementById(`up-${label}`);
+                if (!el) return;
+                
+                if (label === 'monte_carlo') {
+                    // Monte Carlo upside calculated below
+                    return;
+                }
+                
+                const sign = upside > 0 ? '+' : '';
+                el.innerText = `${sign}${upside.toFixed(1)}%`;
+                
+                if (upside > 0) el.className = "text-[10px] text-center mt-1 font-bold text-green-500";
+                else el.className = "text-[10px] text-center mt-1 font-bold text-red-400";
+            };
+
+            // Calculate upsides for buttons
+            ['pessimistic', 'base', 'optimistic'].forEach(s => {
+                const res = runDCFModel(baseInputs, theme, s);
+                const up = baseInputs.startPrice > 0 ? ((res.fv - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                renderScenarioLabel(s, up);
+            });
+
 
             // --- MONTE CARLO MODE ---
             if (scenario === 'monte_carlo') {
@@ -1106,22 +1147,15 @@
                 sensTitle.innerText = "Анализ Рисков (Monte Carlo)";
                 sensSubtitle.innerText = "Распределение справедливой цены (1000 симуляций)";
                 
-                // Run simulations
                 const sims = 1000;
                 const results = [];
                 for(let i=0; i<sims; i++) {
-                    // Randomize Inputs
                     const simInputs = { ...baseInputs };
-                    simInputs.startGrowth = randomNormal(baseInputs.startGrowth, 2.0); // +/- 2% growth
-                    simInputs.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5); // +/- 1.5% margin
-                    simInputs.wacc = randomNormal(baseInputs.wacc, 0.005); // +/- 0.5% WACC
+                    simInputs.startGrowth = randomNormal(baseInputs.startGrowth, 2.0); 
+                    simInputs.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5); 
+                    simInputs.wacc = randomNormal(baseInputs.wacc, 0.005); 
                     
-                    // Randomize PE implicitly via slight margin jitter or we need to pass a jitter param to runDCF
-                    // For simplicity, runDCF is deterministic given inputs.
-                    // We can jitter finalPE inside by passing an override? No, better to let runDCF handle logic
-                    // Let's rely on Growth/Margin/WACC volatility.
-                    
-                    const res = runDCFModel(simInputs, theme, 'monte_carlo'); // 'monte_carlo' scenario uses flat mods
+                    const res = runDCFModel(simInputs, theme, 'monte_carlo'); 
                     if(isFinite(res.fv)) results.push(res.fv);
                 }
                 
@@ -1133,8 +1167,41 @@
                 safeSetText('mc-p10', formatCurrency(p10));
                 safeSetText('mc-p50', formatCurrency(p50));
                 safeSetText('mc-p90', formatCurrency(p90));
+
+                // Update MC button label with P50 upside
+                const p50Upside = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                const mcLabel = document.getElementById('up-monte_carlo');
+                if (mcLabel) {
+                    const sign = p50Upside > 0 ? '+' : '';
+                    mcLabel.innerText = `${sign}${p50Upside.toFixed(1)}%`;
+                    if (p50Upside > 0) mcLabel.className = "text-[10px] text-center mt-1 font-bold text-green-500";
+                    else mcLabel.className = "text-[10px] text-center mt-1 font-bold text-red-400";
+                }
                 
                 return;
+            } else {
+                 // Clear MC label if not active, or keep last calculated? Better calculate it too for consistency
+                 // Run quick MC for label
+                const sims = 100; // faster for label
+                const results = [];
+                for(let i=0; i<sims; i++) {
+                    const simInputs = { ...baseInputs };
+                    simInputs.startGrowth = randomNormal(baseInputs.startGrowth, 2.0); 
+                    simInputs.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5); 
+                    simInputs.wacc = randomNormal(baseInputs.wacc, 0.005); 
+                    const res = runDCFModel(simInputs, theme, 'monte_carlo'); 
+                    if(isFinite(res.fv)) results.push(res.fv);
+                }
+                results.sort((a,b) => a-b);
+                const p50 = results[Math.floor(sims * 0.5)];
+                const p50Upside = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                const mcLabel = document.getElementById('up-monte_carlo');
+                if (mcLabel) {
+                    const sign = p50Upside > 0 ? '+' : '';
+                    mcLabel.innerText = `${sign}${p50Upside.toFixed(1)}%`;
+                    if (p50Upside > 0) mcLabel.className = "text-[10px] text-center mt-1 font-bold text-green-500";
+                    else mcLabel.className = "text-[10px] text-center mt-1 font-bold text-red-400";
+                }
             }
 
             // --- STANDARD SENSITIVITY GRID ---
@@ -1211,6 +1278,7 @@
                 
                 if (row.isExit) {
                     tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
+                    // UPDATED: Dual formula display
                     tr.innerHTML = `
                         <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
                         <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
@@ -1248,6 +1316,7 @@
         }
 
         function renderLifecycleVisuals(result, themeKey, scenario) {
+            // 1. Table
             const t = result.phaseTargets;
             const tbody = document.getElementById('lifecycle-table-body');
             tbody.innerHTML = `
@@ -1271,6 +1340,7 @@
                 </tr>
             `;
 
+            // 2. Chart
             if (!state.charts.lc) return;
             const chart = state.charts.lc;
             
@@ -1281,22 +1351,28 @@
             
             const bell = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2))); 
             
+            // Fixed reference points for ETFs
             const etfData = [
                 { x: METRICS['IndexTech'].lcX, y: bell(METRICS['IndexTech'].lcX), label: 'QQQ' },
                 { x: METRICS['Steady'].lcX, y: bell(METRICS['Steady'].lcX), label: 'SPY' },
                 { x: METRICS['IndexValue'].lcX, y: bell(METRICS['IndexValue'].lcX), label: 'DIA' }
             ];
 
+            // Background theme markers
             const themeData = THEME_ORDER.map(k => ({
                 x: METRICS[k].lcX,
                 y: bell(METRICS[k].lcX)
             }));
             
+            // Update Datasets
+            // 0: Curve, 1: All Themes (Gray), 2: ETFs (Square), 3: Target Company (Big Circle)
+            
             chart.data.datasets[1].data = themeData; 
             chart.data.datasets[2].data = etfData;
             
+            // Target Company Position based on Scenario
             let activeX = baseX;
-            let color = '#3b82f6'; 
+            let color = '#3b82f6'; // Base Blue
             if (scenario === 'optimistic') { activeX = oX; color = '#22c55e'; }
             if (scenario === 'pessimistic') { activeX = pX; color = '#ef4444'; }
             
@@ -1308,7 +1384,7 @@
 
         // --- CHARTS ---
         function initChart() {
-            // Only Lifecycle chart now
+            // Lifecycle Chart Only
             const ctxLc = document.getElementById('lifecycleChart');
             if (ctxLc) {
                 const curveData = [];
@@ -1363,6 +1439,7 @@
                                 enabled: true,
                                 callbacks: {
                                     label: function(context) {
+                                        // Custom logic to show ETF names if available in raw data
                                         const raw = context.raw;
                                         if (raw.label) return raw.label;
                                         return context.dataset.label;
@@ -1388,6 +1465,7 @@
                 startRPS: getVal('inp-rps') || 0,
                 startGrowth: getVal('inp-growth') || 0,
                 forecastMargin: getVal('inp-forecast-margin') || 0,
+                // Check isNaN so 0 is allowed
                 wacc: (isNaN(waccInput) ? 8 : waccInput)/100,
                 startPayout: getVal('inp-payout') || 0,
                 N: parseInt(document.getElementById('slider-years').value) || 15
