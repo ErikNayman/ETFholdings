@@ -222,7 +222,7 @@
                          <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
                             <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
                         </h3>
-                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены на каждый год</span>
+                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены и доходности</span>
                     </div>
                     
                     <!-- SCROLLABLE TABLE FOR RELAY -->
@@ -231,8 +231,10 @@
                             <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
                                 <tr>
                                     <th class="py-1 px-2">Год</th>
-                                    <th class="py-1 text-right">Fair Price</th>
-                                    <th class="py-1 text-right pr-2">Implied P/E</th>
+                                    <th class="py-1 text-right">Price</th>
+                                    <th class="py-1 text-right">P/E</th>
+                                    <th class="py-1 text-right">P/S</th>
+                                    <th class="py-1 text-right pr-2">Yield (YoY)</th>
                                 </tr>
                             </thead>
                             <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
@@ -1097,7 +1099,6 @@
 
             // --- BUYER'S RELAY (RECURSIVE VALUATION) ---
             let relay = [];
-            // Create full timeline of prices/yields
             
             if (scenario !== 'monte_carlo') {
                 // Calculate Price trajectory
@@ -1127,15 +1128,31 @@
                     
                     // Special case for Year N: Price is Exit Price
                     if (t === N) pvFuture = exitPrice;
-
-                    // Calculate Implied Yield (Forward IRR) from t to N
-                    // ... (simplified as null for now to keep table clean, or calc if needed)
-                    // Let's just calc PE based on forward price.
                     
+                    // Calculate Implied PS
+                    let impliedPS = 0;
+                    if (tableData[t] && tableData[t].rps > 0) {
+                        impliedPS = pvFuture / tableData[t].rps;
+                    }
+
+                    // Calculate Yield YoY
+                    let yieldYoY = null;
+                    if (t > 0 && relay.length > 0) {
+                         const prevPrice = relay[t-1].price;
+                         // Flow at year t is tableData[t].flow (Dividend/Buyback payout)
+                         const flow = tableData[t].flow; 
+                         
+                         if (prevPrice > 0) {
+                             yieldYoY = (pvFuture + flow) / prevPrice - 1;
+                         }
+                    }
+
                     relay.push({
                         year: t,
                         price: pvFuture,
-                        pe: (tableData[t] && tableData[t].eps > 0) ? pvFuture / tableData[t].eps : 0
+                        pe: (tableData[t] && tableData[t].eps > 0) ? pvFuture / tableData[t].eps : 0,
+                        ps: impliedPS,
+                        yieldYoY: yieldYoY
                     });
                 }
             }
@@ -1180,16 +1197,27 @@
                 relay.forEach(r => {
                     const row = document.createElement('tr');
                     const peTxt = r.pe > 0 ? r.pe.toFixed(1) + 'x' : '-';
+                    const psTxt = r.ps > 0 ? r.ps.toFixed(1) + 'x' : '-';
+                    const yieldTxt = r.yieldYoY !== null ? (r.yieldYoY * 100).toFixed(1) + '%' : '-';
                     
+                    // Simple color for yield
+                    let yieldClass = "text-slate-500";
+                    if (r.yieldYoY !== null) {
+                        if (r.yieldYoY > 0.15) yieldClass = "text-green-600 font-bold";
+                        else if (r.yieldYoY < 0) yieldClass = "text-red-500 font-bold";
+                    }
+
                     row.innerHTML = `
                         <td class="py-1 px-2 border-b border-indigo-50 font-medium text-indigo-900">Y${r.year}</td>
                         <td class="py-1 text-right border-b border-indigo-50 font-bold text-indigo-700">${formatCurrency(r.price)}</td>
-                        <td class="py-1 text-right pr-2 border-b border-indigo-50 text-slate-500 font-mono">${peTxt}</td>
+                        <td class="py-1 text-right border-b border-indigo-50 text-slate-500 font-mono">${peTxt}</td>
+                        <td class="py-1 text-right border-b border-indigo-50 text-slate-500 font-mono">${psTxt}</td>
+                        <td class="py-1 text-right pr-2 border-b border-indigo-50 font-mono ${yieldClass}">${yieldTxt}</td>
                     `;
                     relayBody.appendChild(row);
                 });
             } else if (relayBody) {
-                relayBody.innerHTML = '<tr><td colspan="3" class="text-center py-2 text-slate-400">Нет данных для сценария Monte Carlo</td></tr>';
+                relayBody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-slate-400">Нет данных для сценария Monte Carlo</td></tr>';
             }
             
             // --- NEW REVERSE DCF DISPLAY ---
@@ -1227,6 +1255,7 @@
                 if (!el) return;
                 
                 if (label === 'monte_carlo') {
+                    // Monte Carlo upside calculated below
                     return;
                 }
                 
@@ -1237,6 +1266,7 @@
                 else el.className = "text-[10px] text-center mt-1 font-bold text-red-400";
             };
 
+            // Calculate upsides for buttons
             ['pessimistic', 'base', 'optimistic'].forEach(s => {
                 const res = runDCFModel(baseInputs, theme, s);
                 const up = baseInputs.startPrice > 0 ? ((res.fv - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
@@ -1384,53 +1414,6 @@
                     
                     gridEl.appendChild(cell);
                 });
-            });
-        }
-
-        function renderTable(data) {
-            const tbody = document.getElementById('table-body');
-            if (!tbody) return;
-            tbody.innerHTML = '';
-
-            data.forEach(row => {
-                const tr = document.createElement('tr');
-                
-                if (row.isExit) {
-                    tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
-                    // UPDATED: Dual formula display
-                    tr.innerHTML = `
-                        <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
-                        <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
-                        <td class="px-4 py-2 text-right">
-                            <div class="text-[10px] text-slate-500">RPS x P/S</div>
-                            <div class="font-mono text-indigo-800">${formatCurrency(row.rps)} x ${row.finalPS.toFixed(1)}x</div>
-                        </td>
-                         <td class="px-4 py-2 text-right">
-                            <div class="text-[10px] text-slate-500">EPS x P/E</div>
-                            <div class="font-mono text-indigo-800">${formatCurrency(row.eps)} x ${row.finalPE.toFixed(1)}x</div>
-                        </td>
-                        <td class="px-4 py-2 text-right text-indigo-400" colspan="2">=</td>
-                        <td class="px-4 py-2 text-right font-bold text-indigo-700 text-lg">${formatCurrency(row.flow)}</td>
-                    `;
-                } else {
-                    if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
-                    else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
-                    
-                    const usd = n => formatCurrency(n);
-                    const pct = n => formatPercent(n);
-                    const payoutTxt = row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
-
-                    tr.innerHTML = `
-                        <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
-                        <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
-                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.rps)}</td>
-                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : pct(row.margin)}</td>
-                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.eps)}</td>
-                        <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
-                        <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${usd(row.flow)}</td>
-                    `;
-                }
-                tbody.appendChild(tr);
             });
         }
 
