@@ -183,13 +183,13 @@
                         </div>
                     </div>
                     
-                    <!-- NEW: MANUAL OVERRIDES BLOCK -->
+                    <!-- MANUAL OVERRIDES BLOCK -->
                     <div class="grid grid-cols-2 gap-4 mb-2 p-3 bg-slate-50 rounded border border-slate-100">
                         <div>
                             <label class="text-[10px] font-bold text-slate-500 block mb-1">Горизонт (лет)</label>
                             <div class="flex items-center gap-2">
                                 <input type="range" id="slider-years" min="5" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600">
-                                <span id="disp-years" class="text-xs font-bold text-blue-600 w-12 text-right">--</span>
+                                <input type="number" id="val-years" min="5" max="35" class="w-12 text-xs font-bold text-blue-600 text-right border border-slate-300 rounded px-1" value="15">
                             </div>
                         </div>
                         <div>
@@ -224,7 +224,33 @@
                     </div>
                 </div>
                 
-                <!-- BUYER'S RELAY BLOCK (OLD) REMOVED, NEW ONE BELOW -->
+                <!-- NEW: BUYER'S RELAY BLOCK -->
+                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-6 shadow-sm">
+                    <div class="flex justify-between items-center mb-3">
+                         <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
+                            <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
+                        </h3>
+                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены на каждый год</span>
+                    </div>
+                    
+                    <!-- SCROLLABLE TABLE FOR RELAY -->
+                    <div class="overflow-y-auto custom-scroll" style="max-height: 180px;">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
+                                <tr>
+                                    <th class="py-1 px-2">Год</th>
+                                    <th class="py-1 text-right">Fair Price</th>
+                                    <th class="py-1 text-right">P/E</th>
+                                    <th class="py-1 text-right">P/S</th>
+                                    <th class="py-1 text-right pr-2">Yield (YoY)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
+                                <!-- JS Populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
             </div>
 
@@ -344,34 +370,6 @@
                                 </tr>
                             </thead>
                             <tbody id="table-body" class="divide-y divide-slate-100"></tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- NEW: BUYER'S RELAY BLOCK -->
-                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-6 shadow-sm">
-                    <div class="flex justify-between items-center mb-3">
-                         <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
-                            <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
-                        </h3>
-                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены и доходности</span>
-                    </div>
-                    
-                    <!-- SCROLLABLE TABLE FOR RELAY -->
-                    <div class="overflow-y-auto custom-scroll" style="max-height: 180px;">
-                        <table class="w-full text-xs text-left">
-                            <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
-                                <tr>
-                                    <th class="py-1 px-2">Год</th>
-                                    <th class="py-1 text-right">Fair Price</th>
-                                    <th class="py-1 text-right">P/E</th>
-                                    <th class="py-1 text-right">P/S</th>
-                                    <th class="py-1 text-right pr-2">Yield (YoY)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
-                                <!-- JS Populated -->
-                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -711,15 +709,21 @@
                 document.getElementById('theme-selector').value = profile;
                 safeSetText('company-name', data.name || rawTicker);
 
+                // SYNC SLIDER AND INPUT
                 const slider = document.getElementById('slider-years');
+                const valInput = document.getElementById('val-years');
+                
                 if (data.n_term && data.n_term > 0) {
                     const nTerm = Math.min(Math.max(data.n_term, 5), 35); 
                     slider.max = nTerm;
+                    valInput.max = nTerm;
                     slider.value = nTerm;
+                    valInput.value = nTerm;
                     state.userSetYears = true;
                     state.maxNFromFile = nTerm;
                 } else {
-                    slider.max = 35; 
+                    slider.max = 35;
+                    valInput.max = 35;
                     state.userSetYears = false; 
                     state.maxNFromFile = null;
                 }
@@ -757,14 +761,19 @@
             document.getElementById('theme-selector').value = profile;
             
             const slider = document.getElementById('slider-years');
+            const valInput = document.getElementById('val-years');
+            
             if (data.n_term && data.n_term > 0) {
                 const nTerm = Math.min(Math.max(data.n_term, 5), 35);
                 slider.max = nTerm;
+                valInput.max = nTerm;
                 slider.value = nTerm;
+                valInput.value = nTerm;
                 state.userSetYears = true;
                 state.maxNFromFile = nTerm;
             } else {
                 slider.max = 35;
+                valInput.max = 35;
                 state.userSetYears = false; 
                 state.maxNFromFile = null;
             }
@@ -1635,7 +1644,17 @@
             const userTheme = document.getElementById('theme-selector').value;
             const inputs = readInputsFromDOM();
             
-            const result = runDCFModel(inputs, userTheme, state.scenario);
+            // Read manual override for Exit PE
+            const manualPEInput = document.getElementById('inp-exit-pe');
+            let overrides = {};
+            if (manualPEInput) {
+                const val = parseFloat(manualPEInput.value);
+                if (!isNaN(val) && val > 0) {
+                    overrides.finalPE = val;
+                }
+            }
+            
+            const result = runDCFModel(inputs, userTheme, state.scenario, overrides);
             renderSummary(result, inputs);
             renderTable(result.tableData);
             renderSensitivity(result, inputs, userTheme, state.scenario);
@@ -1664,9 +1683,13 @@
             });
             const params = getCalcParams(themeKey, s);
             const slider = document.getElementById('slider-years');
+            const valInput = document.getElementById('val-years');
+            
             if (slider && !state.userSetYears) {
                 const baseN = METRICS[params.themeKey].N || 12;
-                slider.value = getScenarioHorizon(baseN, s);
+                const newN = getScenarioHorizon(baseN, s);
+                slider.value = newN;
+                if(valInput) valInput.value = newN;
             }
             calculate();
         }
@@ -1674,15 +1697,36 @@
         // --- INIT ---
         window.addEventListener('load', () => {
             initChart();
+            // Sync slider and number input
+            const slider = document.getElementById('slider-years');
+            const valInput = document.getElementById('val-years');
+            
+            if(slider && valInput) {
+                slider.addEventListener('input', () => {
+                    valInput.value = slider.value;
+                    state.userSetYears = true;
+                    calculate();
+                });
+                valInput.addEventListener('input', () => {
+                    let val = parseInt(valInput.value);
+                    if(val < 5) val = 5; 
+                    if(val > 35) val = 35;
+                    slider.value = val;
+                    state.userSetYears = true;
+                    calculate();
+                });
+            }
+
             setScenario('base');
         });
 
         // Listeners
         document.getElementById('inp-ticker').addEventListener('keypress', (e) => { if(e.key==='Enter') loadTicker(); });
         document.getElementById('theme-selector').addEventListener('change', () => setScenario(state.scenario || 'base'));
-        document.getElementById('slider-years').addEventListener('input', () => { state.userSetYears = true; calculate(); });
+        
         ['inp-price', 'inp-rps', 'inp-growth', 'inp-forecast-margin', 'inp-wacc', 'inp-payout', 'inp-exit-pe'].forEach(id => {
-            document.getElementById(id).addEventListener('input', calculate);
+            const el = document.getElementById(id);
+            if(el) el.addEventListener('input', calculate);
         });
     </script>
 </body>
