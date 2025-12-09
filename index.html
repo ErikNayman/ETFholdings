@@ -164,7 +164,7 @@
                 <!-- SCENARIO & RESULTS -->
                 <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-4 ring-1 ring-slate-200">
                     <h3 class="text-sm font-bold text-slate-700 uppercase mb-3">2. Сценарный Двигатель</h3>
-                    <div class="grid grid-cols-4 gap-2 mb-6">
+                    <div class="grid grid-cols-4 gap-2 mb-4">
                         <div class="flex flex-col">
                             <button onclick="setScenario('pessimistic')" id="btn-pessimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-red-50 transition-all font-medium text-slate-600">Пессимизм</button>
                             <div id="up-pessimistic" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
@@ -183,13 +183,21 @@
                         </div>
                     </div>
                     
-                    <div class="mt-6 mb-2">
-                        <div class="flex justify-between items-center mb-1">
-                            <label class="text-xs font-bold text-slate-500">Общий горизонт (N)</label>
-                            <span id="disp-years" class="text-xs font-bold text-blue-600">-- лет</span>
+                    <!-- NEW: MANUAL OVERRIDES BLOCK -->
+                    <div class="grid grid-cols-2 gap-4 mb-2 p-3 bg-slate-50 rounded border border-slate-100">
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-500 block mb-1">Горизонт (лет)</label>
+                            <div class="flex items-center gap-2">
+                                <input type="range" id="slider-years" min="5" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600">
+                                <span id="disp-years" class="text-xs font-bold text-blue-600 w-12 text-right">--</span>
+                            </div>
                         </div>
-                        <input type="range" id="slider-years" min="5" max="35" step="1" class="w-full h-1.5 bg-slate-200 rounded-lg accent-blue-600">
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-500 block mb-1">Целевой P/E (через N лет)</label>
+                            <input type="number" id="inp-exit-pe" placeholder="Auto" class="w-full border border-slate-300 rounded px-2 py-1 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-300">
+                        </div>
                     </div>
+
                 </div>
 
                 <div class="bg-slate-800 rounded-xl p-5 text-white shadow-xl">
@@ -216,33 +224,7 @@
                     </div>
                 </div>
                 
-                <!-- NEW: BUYER'S RELAY BLOCK -->
-                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-4 shadow-sm">
-                    <div class="flex justify-between items-center mb-3">
-                         <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
-                            <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
-                        </h3>
-                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены и доходности</span>
-                    </div>
-                    
-                    <!-- SCROLLABLE TABLE FOR RELAY -->
-                    <div class="overflow-y-auto custom-scroll" style="max-height: 180px;">
-                        <table class="w-full text-xs text-left">
-                            <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
-                                <tr>
-                                    <th class="py-1 px-2">Год</th>
-                                    <th class="py-1 text-right">Fair Price</th>
-                                    <th class="py-1 text-right">P/E</th>
-                                    <th class="py-1 text-right">P/S</th>
-                                    <th class="py-1 text-right pr-2">Yield (YoY)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
-                                <!-- JS Populated -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <!-- BUYER'S RELAY BLOCK (OLD) REMOVED, NEW ONE BELOW -->
 
             </div>
 
@@ -362,6 +344,34 @@
                                 </tr>
                             </thead>
                             <tbody id="table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- NEW: BUYER'S RELAY BLOCK -->
+                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-6 shadow-sm">
+                    <div class="flex justify-between items-center mb-3">
+                         <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
+                            <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
+                        </h3>
+                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены и доходности</span>
+                    </div>
+                    
+                    <!-- SCROLLABLE TABLE FOR RELAY -->
+                    <div class="overflow-y-auto custom-scroll" style="max-height: 180px;">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
+                                <tr>
+                                    <th class="py-1 px-2">Год</th>
+                                    <th class="py-1 text-right">Fair Price</th>
+                                    <th class="py-1 text-right">P/E</th>
+                                    <th class="py-1 text-right">P/S</th>
+                                    <th class="py-1 text-right pr-2">Yield (YoY)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
+                                <!-- JS Populated -->
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -1671,7 +1681,7 @@
         document.getElementById('inp-ticker').addEventListener('keypress', (e) => { if(e.key==='Enter') loadTicker(); });
         document.getElementById('theme-selector').addEventListener('change', () => setScenario(state.scenario || 'base'));
         document.getElementById('slider-years').addEventListener('input', () => { state.userSetYears = true; calculate(); });
-        ['inp-price', 'inp-rps', 'inp-growth', 'inp-forecast-margin', 'inp-wacc', 'inp-payout'].forEach(id => {
+        ['inp-price', 'inp-rps', 'inp-growth', 'inp-forecast-margin', 'inp-wacc', 'inp-payout', 'inp-exit-pe'].forEach(id => {
             document.getElementById(id).addEventListener('input', calculate);
         });
     </script>
