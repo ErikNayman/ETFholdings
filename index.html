@@ -720,14 +720,14 @@
                 
                 if (data.n_term && data.n_term > 0) {
                     const nTerm = Math.min(Math.max(data.n_term, 5), 35); 
-                    slider.max = nTerm;
-                    valInput.max = nTerm;
+                    slider.max = 35; // FIX: Always max 35
+                    valInput.max = 35;
                     slider.value = nTerm;
                     valInput.value = nTerm;
                     state.userSetYears = true;
                     state.maxNFromFile = nTerm;
                 } else {
-                    slider.max = 35; // FIX: Always max 35
+                    slider.max = 35;
                     valInput.max = 35;
                     state.userSetYears = false; 
                     state.maxNFromFile = null;
