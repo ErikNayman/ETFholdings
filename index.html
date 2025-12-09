@@ -184,20 +184,26 @@
                     </div>
                     
                     <!-- MANUAL OVERRIDES BLOCK -->
-                    <div class="grid grid-cols-2 gap-4 mb-2 p-3 bg-slate-50 rounded border border-slate-100">
+                    <div class="grid grid-cols-3 gap-3 mb-2 p-3 bg-slate-50 rounded border border-slate-100">
                         <!-- Horizon -->
                         <div>
-                            <label class="text-[10px] font-bold text-slate-500 block mb-1">Горизонт (N лет)</label>
-                            <div class="flex items-center gap-2">
+                            <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Горизонт (N лет)</label>
+                            <div class="flex items-center gap-1">
                                 <input type="range" id="slider-years" min="5" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600">
-                                <input type="number" id="val-years" min="5" max="35" class="w-12 text-xs font-bold text-blue-600 text-right border border-slate-300 rounded px-1" value="15">
+                                <input type="number" id="val-years" min="5" max="35" class="w-10 text-[10px] font-bold text-blue-600 text-right border border-slate-300 rounded px-1 h-6" value="15">
                             </div>
                         </div>
                         <!-- Target PE -->
                         <div>
-                            <label class="text-[10px] font-bold text-slate-500 block mb-1">Целевой P/E (через N лет)</label>
-                            <div class="flex items-center gap-2 h-full">
-                                <input type="number" id="inp-exit-pe" class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white" placeholder="Auto">
+                            <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Целевой P/E (N)</label>
+                            <input type="number" id="inp-exit-pe" class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white" placeholder="Auto">
+                        </div>
+                        <!-- Target Margin -->
+                        <div>
+                            <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Целевая Маржа (N)</label>
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="inp-term-margin" class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white" placeholder="Auto">
+                                <span class="text-[10px] text-slate-400 font-bold">%</span>
                             </div>
                         </div>
                     </div>
@@ -720,7 +726,7 @@
                 
                 if (data.n_term && data.n_term > 0) {
                     const nTerm = Math.min(Math.max(data.n_term, 5), 35); 
-                    slider.max = 35; // FIX: Always max 35
+                    slider.max = 35; // FIX: Max always 35
                     valInput.max = 35;
                     slider.value = nTerm;
                     valInput.value = nTerm;
@@ -738,6 +744,7 @@
                 // Clear manual flags on new ticker load
                 state.isPEManual = false;
                 document.getElementById('inp-exit-pe').value = '';
+                document.getElementById('inp-term-margin').value = '';
 
                 // Add explicit refresh of calculations immediately after load
                 state.scenario = 'base'; 
@@ -774,10 +781,11 @@
             const slider = document.getElementById('slider-years');
             const valInput = document.getElementById('val-years');
             const peInput = document.getElementById('inp-exit-pe');
+            const marginInput = document.getElementById('inp-term-margin');
             
             if (data.n_term && data.n_term > 0) {
                 const nTerm = Math.min(Math.max(data.n_term, 5), 35);
-                slider.max = 35; // FIX: Always allow user to slide to 35
+                slider.max = 35; // FIX: Max always 35
                 valInput.max = 35;
                 slider.value = nTerm;
                 valInput.value = nTerm;
@@ -792,9 +800,10 @@
                 valInput.value = 15;
             }
             
-            // Reset PE Manual
+            // Reset Manuals
             state.isPEManual = false;
             peInput.value = '';
+            marginInput.value = '';
             
             const panel = document.getElementById('inputs-panel');
             const scpanel = document.getElementById('scenario-panel');
@@ -950,9 +959,15 @@
             const rawGBase = (m) => m.growth; 
             const rawMBase = (m) => m.margin;
 
+            // HANDLE MARGIN OVERRIDE
+            let termMargin = blend(forecastMargin, rawMBase(t3Effective), TERM_BLEND);
+            if (overrides.termMargin !== undefined) {
+                termMargin = overrides.termMargin;
+            }
+
             const targetTerm = {
                 g: blend(startGrowth, rawGBase(t3Effective), TERM_BLEND),
-                m: blend(forecastMargin, rawMBase(t3Effective), TERM_BLEND),
+                m: termMargin,
                 p: isRocket ? t3Effective.payout : blend(startPayout, t3Effective.payout, TERM_BLEND)
             };
             const targetMid = {
@@ -1667,11 +1682,23 @@
             
             // Read manual override for Exit PE
             const manualPEInput = document.getElementById('inp-exit-pe');
+            const manualMarginInput = document.getElementById('inp-term-margin');
+            
             let overrides = {};
+            
+            // Handle PE Manual
             if (manualPEInput) {
                 const val = parseFloat(manualPEInput.value);
                 if (!isNaN(val) && val > 0) {
                     overrides.finalPE = val;
+                }
+            }
+            
+            // Handle Margin Manual
+            if (manualMarginInput) {
+                const val = parseFloat(manualMarginInput.value);
+                if (!isNaN(val)) {
+                    overrides.termMargin = val;
                 }
             }
             
@@ -1682,9 +1709,14 @@
             
             renderLifecycleVisuals(result, userTheme, state.scenario);
             
-            // Update the PE input placeholder to show calculated value if not manually set
-            if (!overrides.finalPE && manualPEInput && result.finalPE) {
+            // Update placeholders with auto-calculated values IF manual input is empty
+            if (manualPEInput && !overrides.finalPE && result.finalPE) {
                 manualPEInput.placeholder = result.finalPE.toFixed(1);
+            }
+            if (manualMarginInput && !overrides.termMargin) {
+                // Get auto-calculated margin from phaseTargets
+                const autoMargin = result.phaseTargets.term.m;
+                manualMarginInput.placeholder = autoMargin.toFixed(1);
             }
         }
 
@@ -1733,6 +1765,7 @@
             const slider = document.getElementById('slider-years');
             const valInput = document.getElementById('val-years');
             const peInput = document.getElementById('inp-exit-pe');
+            const marginInput = document.getElementById('inp-term-margin');
             
             if(slider && valInput) {
                 slider.addEventListener('input', () => {
@@ -1756,6 +1789,12 @@
                     calculate();
                 });
             }
+            // Add listener for margin manual override
+            if (marginInput) {
+                marginInput.addEventListener('input', () => {
+                    calculate();
+                });
+            }
 
             setScenario('base');
         });
@@ -1767,9 +1806,9 @@
             // Or keep them? Usually a new theme implies new defaults.
             // Let's reset the "User Set Years" flag to allow the new theme's default N to apply
             state.userSetYears = false;
-            // Clear manual PE input to allow new theme's PE to show
-            const peInput = document.getElementById('inp-exit-pe');
-            if(peInput) peInput.value = '';
+            // Clear manual inputs
+            document.getElementById('inp-exit-pe').value = '';
+            document.getElementById('inp-term-margin').value = '';
             
             setScenario(state.scenario || 'base');
         });
