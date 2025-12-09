@@ -189,8 +189,8 @@
                         <div>
                             <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Горизонт (N лет)</label>
                             <div class="flex items-center gap-1">
-                                <input type="range" id="slider-years" min="5" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600">
-                                <input type="number" id="val-years" min="5" max="35" class="w-10 text-[10px] font-bold text-blue-600 text-right border border-slate-300 rounded px-1 h-6" value="15">
+                                <input type="range" id="slider-years" min="3" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600">
+                                <input type="number" id="val-years" min="3" max="35" class="w-10 text-[10px] font-bold text-blue-600 text-right border border-slate-300 rounded px-1 h-6" value="15">
                             </div>
                         </div>
                         <!-- Target PE -->
@@ -725,8 +725,8 @@
                 const valInput = document.getElementById('val-years');
                 
                 if (data.n_term && data.n_term > 0) {
-                    const nTerm = Math.min(Math.max(data.n_term, 5), 35); 
-                    slider.max = 35; // FIX: Max always 35
+                    const nTerm = Math.min(Math.max(data.n_term, 3), 35); 
+                    slider.max = 35; // FIX: Always max 35
                     valInput.max = 35;
                     slider.value = nTerm;
                     valInput.value = nTerm;
@@ -784,7 +784,7 @@
             const marginInput = document.getElementById('inp-term-margin');
             
             if (data.n_term && data.n_term > 0) {
-                const nTerm = Math.min(Math.max(data.n_term, 5), 35);
+                const nTerm = Math.min(Math.max(data.n_term, 3), 35);
                 slider.max = 35; // FIX: Max always 35
                 valInput.max = 35;
                 slider.value = nTerm;
@@ -825,7 +825,7 @@
 
         // --- SCENARIO HORIZON HELPER ---
         function getScenarioHorizon(baseN, scenario) {
-            const minN = 5;
+            const minN = 3;
             let maxN = 30; 
 
             if (state.maxNFromFile != null) {
@@ -1775,7 +1775,7 @@
                 });
                 valInput.addEventListener('input', () => {
                     let val = parseInt(valInput.value);
-                    if(val < 5) val = 5; 
+                    if(val < 3) val = 3; // Fixed min
                     if(val > 35) val = 35;
                     slider.value = val;
                     state.userSetYears = true;
