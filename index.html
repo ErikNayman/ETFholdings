@@ -162,7 +162,7 @@
                 </div>
 
                 <!-- SCENARIO & RESULTS -->
-                <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-4 ring-1 ring-slate-200">
+                <div id="scenario-panel" class="bg-white rounded-xl shadow-lg border border-slate-200 p-4 ring-1 ring-slate-200 transition-colors duration-500">
                     <h3 class="text-sm font-bold text-slate-700 uppercase mb-3">2. Сценарный Двигатель</h3>
                     <div class="grid grid-cols-4 gap-2 mb-4">
                         <div class="flex flex-col">
@@ -185,16 +185,20 @@
                     
                     <!-- MANUAL OVERRIDES BLOCK -->
                     <div class="grid grid-cols-2 gap-4 mb-2 p-3 bg-slate-50 rounded border border-slate-100">
+                        <!-- Horizon -->
                         <div>
-                            <label class="text-[10px] font-bold text-slate-500 block mb-1">Горизонт (лет)</label>
+                            <label class="text-[10px] font-bold text-slate-500 block mb-1">Горизонт (N лет)</label>
                             <div class="flex items-center gap-2">
                                 <input type="range" id="slider-years" min="5" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600">
                                 <input type="number" id="val-years" min="5" max="35" class="w-12 text-xs font-bold text-blue-600 text-right border border-slate-300 rounded px-1" value="15">
                             </div>
                         </div>
+                        <!-- Target PE -->
                         <div>
                             <label class="text-[10px] font-bold text-slate-500 block mb-1">Целевой P/E (через N лет)</label>
-                            <input type="number" id="inp-exit-pe" placeholder="Auto" class="w-full border border-slate-300 rounded px-2 py-1 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-300">
+                            <div class="flex items-center gap-2 h-full">
+                                <input type="number" id="inp-exit-pe" class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white" placeholder="Auto">
+                            </div>
                         </div>
                     </div>
 
@@ -448,7 +452,8 @@
             charts: {}, 
             userSetYears: false, 
             currentTicker: '',
-            maxNFromFile: null 
+            maxNFromFile: null,
+            isPEManual: false // NEW FLAG to track manual PE entry
         };
         
         // Bell Curve for charts
@@ -727,6 +732,10 @@
                     state.userSetYears = false; 
                     state.maxNFromFile = null;
                 }
+                
+                // Clear manual flags on new ticker load
+                state.isPEManual = false;
+                document.getElementById('inp-exit-pe').value = '';
 
                 // Add explicit refresh of calculations immediately after load
                 state.scenario = 'base'; 
@@ -762,6 +771,7 @@
             
             const slider = document.getElementById('slider-years');
             const valInput = document.getElementById('val-years');
+            const peInput = document.getElementById('inp-exit-pe');
             
             if (data.n_term && data.n_term > 0) {
                 const nTerm = Math.min(Math.max(data.n_term, 5), 35);
@@ -778,10 +788,17 @@
                 state.maxNFromFile = null;
             }
             
+            // Reset PE Manual
+            state.isPEManual = false;
+            peInput.value = '';
+            
             const panel = document.getElementById('inputs-panel');
+            const scpanel = document.getElementById('scenario-panel');
             panel.classList.remove('flash-update');
+            if(scpanel) scpanel.classList.remove('flash-update');
             void panel.offsetWidth; 
             panel.classList.add('flash-update');
+            if(scpanel) scpanel.classList.add('flash-update');
             
             state.scenario = 'base';
             setScenario('base');
@@ -1660,6 +1677,11 @@
             renderSensitivity(result, inputs, userTheme, state.scenario);
             
             renderLifecycleVisuals(result, userTheme, state.scenario);
+            
+            // Update the PE input placeholder to show calculated value if not manually set
+            if (!overrides.finalPE && manualPEInput && result.finalPE) {
+                manualPEInput.placeholder = result.finalPE.toFixed(1);
+            }
         }
 
         function setScenario(s) {
@@ -1685,12 +1707,18 @@
             const slider = document.getElementById('slider-years');
             const valInput = document.getElementById('val-years');
             
+            // Logic to update slider if it wasn't manually set by user
             if (slider && !state.userSetYears) {
                 const baseN = METRICS[params.themeKey].N || 12;
                 const newN = getScenarioHorizon(baseN, s);
                 slider.value = newN;
                 if(valInput) valInput.value = newN;
             }
+            
+            // Clear manual PE on scenario change if desired, or keep it sticky. 
+            // Standard practice: if user typed it, keep it. If not, auto-update via calculate()'s placeholder logic.
+            // Current implementation: input value persists if typed.
+            
             calculate();
         }
 
@@ -1700,6 +1728,7 @@
             // Sync slider and number input
             const slider = document.getElementById('slider-years');
             const valInput = document.getElementById('val-years');
+            const peInput = document.getElementById('inp-exit-pe');
             
             if(slider && valInput) {
                 slider.addEventListener('input', () => {
@@ -1716,15 +1745,32 @@
                     calculate();
                 });
             }
+            
+            // Add listener to reset manual PE override if user clears input
+            if (peInput) {
+                peInput.addEventListener('input', () => {
+                    calculate();
+                });
+            }
 
             setScenario('base');
         });
 
         // Listeners
         document.getElementById('inp-ticker').addEventListener('keypress', (e) => { if(e.key==='Enter') loadTicker(); });
-        document.getElementById('theme-selector').addEventListener('change', () => setScenario(state.scenario || 'base'));
+        document.getElementById('theme-selector').addEventListener('change', () => {
+            // Reset manual overrides when theme changes significantly? 
+            // Or keep them? Usually a new theme implies new defaults.
+            // Let's reset the "User Set Years" flag to allow the new theme's default N to apply
+            state.userSetYears = false;
+            // Clear manual PE input to allow new theme's PE to show
+            const peInput = document.getElementById('inp-exit-pe');
+            if(peInput) peInput.value = '';
+            
+            setScenario(state.scenario || 'base');
+        });
         
-        ['inp-price', 'inp-rps', 'inp-growth', 'inp-forecast-margin', 'inp-wacc', 'inp-payout', 'inp-exit-pe'].forEach(id => {
+        ['inp-price', 'inp-rps', 'inp-growth', 'inp-forecast-margin', 'inp-wacc', 'inp-payout'].forEach(id => {
             const el = document.getElementById(id);
             if(el) el.addEventListener('input', calculate);
         });
