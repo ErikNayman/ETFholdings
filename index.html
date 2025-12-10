@@ -1114,7 +1114,13 @@
             // Safety caps
             let maxPE = 80;
             if (scenario === 'base') maxPE = 30;       
-            if (scenario === 'pessimistic') maxPE = 20; 
+            if (scenario === 'pessimistic') maxPE = 20;
+            if (scenario === 'monte_carlo') {
+                // Dynamic Cap: Allow 50% premium over the sector baseline, but cap at 60x absolute
+                // This adapts to the stock type (Steady gets lower cap, Growth gets higher)
+                const baseThemePE = termTheme.pe || 25;
+                maxPE = Math.min(60, baseThemePE * 1.5);
+            } 
             
             if (finalPE > maxPE) {
                 finalPE = maxPE;
