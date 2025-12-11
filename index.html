@@ -488,7 +488,7 @@
         // --- RANDOM HELPER for Monte Carlo ---
         function randomNormal(mean, stdDev) {
             let u = 0, v = 0;
-            while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+            while(u === 0) u = Math.random(); 
             while(v === 0) v = Math.random();
             const z = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
             return mean + z * stdDev;
@@ -514,6 +514,8 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
                     let successCount = 0;
+                    let firstTickerToLoad = null;
+
                     for (const sheetName of workbook.SheetNames) {
                         const worksheet = workbook.Sheets[sheetName];
                         const rawData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
@@ -521,12 +523,20 @@
                         if (res && res.count > 0) {
                             GLOBAL_DB = { ...GLOBAL_DB, ...res.db };
                             successCount += res.count;
+                            if (!firstTickerToLoad) firstTickerToLoad = res.first;
                         }
                     }
                     if (successCount > 0) {
                         document.getElementById('db-status').innerText = `Excel (${successCount} шт.)`;
                         document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
-                        alert(`Успешно загружено ${successCount} компаний! Введите тикер в поиск.`);
+                        
+                        // Auto-load first ticker
+                        if (firstTickerToLoad) {
+                            document.getElementById('inp-ticker').value = firstTickerToLoad;
+                            loadTicker();
+                        } else {
+                            alert(`Успешно загружено ${successCount} компаний! Введите тикер в поиск.`);
+                        }
                     } else {
                         errEl.innerText = "Не удалось найти данные. Проверьте заголовки (Ticker, Price...).";
                         errEl.classList.remove('hidden');
@@ -562,12 +572,14 @@
         function extractDataFromSheet(rows) {
             const newDB = {};
             let count = 0;
-            if (!rows || rows.length === 0) return { count: 0, db: {} };
+            let firstFoundTicker = null;
+
+            if (!rows || rows.length === 0) return { count: 0, db: {}, first: null };
 
             let headerRowIndex = -1;
             let colMap = {}; 
             
-            // STRICT MATCHING LOGIC
+            // RELAXED MATCHING LOGIC
             const keyMap = {
                 ticker: ['ticker', 'symbol', 'code', 'тикер'],
                 price: ['price', 'close', 'last', 'цена'],
@@ -587,11 +599,19 @@
                 let tempMap = {};
                 row.forEach((cell, cellIdx) => {
                     if (!cell) return;
-                    const val = String(cell).toLowerCase().replace('.', '').trim();
+                    // FIX: Remove ALL dots to handle P.E., W.A.C.C. etc.
+                    const val = String(cell).toLowerCase().replace(/\./g, '').trim();
                     
                     for (const [key, candidates] of Object.entries(keyMap)) {
                         const isMatch = candidates.some(c => {
-                            if (c.length <= 4 && !c.includes('/')) return val === c; 
+                            // Relaxed check: allows "WACC (%)" to match "wacc"
+                            // If candidate is short (<=3), require strict word match or exact match
+                            if (c.length <= 3) {
+                                // Check if val IS c, or val has c surrounded by non-letters
+                                // E.g. "P/E" matches "P/E Ratio" but "PE" should match "PE Ratio"
+                                // Simplest robust check:
+                                return val === c || val.startsWith(c + ' ') || val.includes(' ' + c) || val.includes('/' + c); 
+                            }
                             return val.includes(c);
                         });
                         if (isMatch && tempMap[key] === undefined) tempMap[key] = cellIdx;
@@ -602,7 +622,7 @@
                 }
             }
 
-            if (headerRowIndex === -1) return { count: 0, db: {} };
+            if (headerRowIndex === -1) return { count: 0, db: {}, first: null };
 
             for (let i = headerRowIndex + 1; i < rows.length; i++) {
                 const row = rows[i];
@@ -636,9 +656,10 @@
                         ps: safeFloat(getValue('ps'), null)
                     };
                     count++;
+                    if (!firstFoundTicker) firstFoundTicker = ticker;
                 }
             }
-            return { count, db: newDB };
+            return { count, db: newDB, first: firstFoundTicker };
         }
 
         // --- AUTO-PROFILE ---
