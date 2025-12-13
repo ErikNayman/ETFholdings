@@ -1,2128 +1,1888 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DCF Pro: Lifecycle Engine</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCF Pro: Lifecycle & Targets</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; }
+        input[type=range]:focus { outline: none; }
+        .chart-container { position: relative; width: 100%; height: 280px; }
+        .lc-chart-container { position: relative; width: 100%; height: 220px; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
+        
+        /* Timeline styling */
+        .timeline-line { position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #e2e8f0; z-index: 0; transform: translateY(-50%); }
+        .timeline-segment { flex: 1; text-align: center; position: relative; padding-top: 20px; }
+        .timeline-dot { width: 12px; height: 12px; border-radius: 50%; background: white; border: 2px solid #64748b; margin: 0 auto; position: relative; z-index: 10; }
+        .timeline-segment.active .timeline-dot { border-color: #3b82f6; background: #eff6ff; }
+        
+        .dur-badge { 
+            position: absolute; top: -12px; left: 50%; transform: translateX(-50%); 
+            font-size: 0.65rem; background: #f1f5f9; padding: 1px 6px; border-radius: 99px; 
+            border: 1px solid #cbd5e1; color: #64748b; font-weight: 600; z-index: 5;
+        }
 
-  <!-- SheetJS -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet" />
-  <style>
-    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
-    input[type=range] { -webkit-appearance: none; background: transparent; }
-    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; }
-    input[type=range]:focus { outline: none; }
-    .chart-container { position: relative; width: 100%; height: 280px; }
-    .lc-chart-container { position: relative; width: 100%; height: 220px; }
-    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-    .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
-    .custom-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
-
-    @keyframes flash {
-      0% { background-color: #dbeafe; }
-      100% { background-color: white; }
-    }
-    .flash-update { animation: flash 1s ease-out; }
-  </style>
+        @keyframes flash {
+            0% { background-color: #dbeafe; }
+            100% { background-color: white; }
+        }
+        .flash-update {
+            animation: flash 1s ease-out;
+        }
+    </style>
 </head>
-
 <body class="antialiased">
-  <div class="max-w-7xl mx-auto px-4 py-6">
-    <header class="mb-6 flex justify-between items-center">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Lifecycle Engine</h1>
-        <p class="text-sm text-slate-500">Оценка стоимости P/S Anchor & Lifecycle + Discount rate (CAPM-style).</p>
-      </div>
-      <div class="text-right">
-        <div class="text-xs text-slate-400 uppercase">Метрика</div>
-        <div class="text-sm font-bold text-indigo-600">IRR vs Discount rate (r)</div>
-      </div>
-    </header>
 
-    <div class="grid lg:grid-cols-12 gap-6">
-      <!-- LEFT COLUMN -->
-      <div class="lg:col-span-4 space-y-5">
+    <div class="max-w-7xl mx-auto px-4 py-6">
 
-        <!-- DATA SOURCE PANEL -->
-        <div class="bg-indigo-600 rounded-xl shadow-lg p-4 text-white">
-          <div class="flex justify-between items-center mb-2">
-            <label class="block text-xs font-bold text-indigo-200 uppercase tracking-wider">Источник данных</label>
-            <span id="db-status" class="text-[10px] bg-indigo-500 px-2 py-0.5 rounded text-indigo-100">Демо База</span>
-          </div>
-
-          <!-- Excel Upload -->
-          <div class="mb-4 relative group">
-            <label for="excel-upload"
-              class="flex items-center justify-center w-full px-4 py-2 bg-indigo-500 hover:bg-indigo-400 border border-indigo-400 border-dashed rounded cursor-pointer transition-colors text-xs font-bold uppercase select-none">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-              </svg>
-              Загрузить Excel (.xlsx)
-            </label>
-            <input id="excel-upload" type="file" accept=".xlsx, .xls" class="hidden" onchange="handleExcelUpload(event)" />
-            <div
-              class="hidden group-hover:block absolute top-full left-0 w-full bg-slate-800 text-slate-200 text-[10px] p-3 rounded mt-1 z-20 shadow-xl border border-slate-600 leading-relaxed">
-              <strong>Нужные колонки:</strong><br />
-              Ticker, Price, RPS, Growth, Margin, Payout<br />
-              <em class="text-slate-400">Опционально:</em> Theme, N, PE, PS, Beta, ROIC, RF, WACC/DR
-            </div>
-          </div>
-          <div id="upload-error" class="text-xs bg-red-500 text-white p-2 rounded mb-2 hidden"></div>
-
-          <!-- Search -->
-          <div class="flex gap-2">
-            <input type="text" id="inp-ticker" placeholder="TICKER (e.g. SPY, QQQ)"
-              class="w-full bg-indigo-700 border border-indigo-500 text-white placeholder-indigo-300 rounded px-3 py-2 font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white" />
-            <button onclick="loadTicker()"
-              class="bg-white text-indigo-600 px-4 py-2 rounded font-bold hover:bg-indigo-50 transition-colors">
-              Go
-            </button>
-          </div>
-          <div id="ticker-error" class="text-xs text-red-300 mt-2 hidden">Тикер не найден</div>
-        </div>
-
-        <!-- IRR CARD -->
-        <div class="bg-slate-800 rounded-xl p-5 text-white shadow-xl">
-          <div class="flex justify-between items-start mb-2">
+        <header class="mb-6 flex justify-between items-center">
             <div>
-              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">IRR (Прогноз)</h4>
-              <div class="text-5xl font-bold tracking-tight" id="res-irr">--%</div>
+                <h1 class="text-2xl font-bold text-slate-900">DCF Pro: Lifecycle Engine</h1>
+                <p class="text-sm text-slate-500">
+                    Оценка стоимости P/S Anchor & Lifecycle.
+                </p>
             </div>
             <div class="text-right">
-              <div class="text-[10px] text-slate-400 uppercase">Upside</div>
-              <div id="res-upside" class="text-xl font-bold text-green-400">--%</div>
+                <div class="text-xs text-slate-400 uppercase">Метрика</div>
+                <div class="text-sm font-bold text-indigo-600">IRR vs Cost of Capital (r)</div>
             </div>
-          </div>
+        </header>
 
-          <div class="mt-3 pt-2 border-t border-slate-600 text-[10px] text-slate-400 flex justify-between">
-            <span>Fair Value: <span id="res-fv" class="text-white font-bold">$---</span></span>
-            <div class="text-right">
-              <div class="text-[9px] text-slate-500">EXIT MULTIPLES</div>
-              <div>
-                <span class="text-slate-400 mr-1">P/E:</span><span id="res-exit-pe" class="text-white font-bold mr-2">--x</span>
-                <span class="text-slate-400 mr-1">P/S:</span><span id="res-exit-ps" class="text-white font-bold">--x</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div class="grid lg:grid-cols-12 gap-6">
 
-        <!-- INPUTS -->
-        <div id="inputs-panel" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 border-l-4 border-l-slate-400 transition-colors duration-500">
-          <div class="flex justify-between items-center mb-3">
-            <h3 class="text-sm font-bold text-slate-700 uppercase">1. Параметры Входа</h3>
-            <div class="flex items-center gap-2">
-              <button onclick="resetToDefaults()" id="btn-reset"
-                class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors hidden"
-                title="Вернуть исходные значения">↺ Сброс</button>
-              <span id="company-name" class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Custom</span>
-              <span id="company-beta" class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded" title="Beta (из Excel)">β: --</span>
-              <span id="company-roic" class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded" title="ROIC (из Excel)">ROIC: --</span>
-            </div>
-          </div>
+            <!-- LEFT COLUMN: CONTROLS -->
+            <div class="lg:col-span-4 space-y-5">
+                
+                <!-- DATA SOURCE PANEL -->
+                <div class="bg-indigo-600 rounded-xl shadow-lg p-4 text-white">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-xs font-bold text-indigo-200 uppercase tracking-wider">Источник данных</label>
+                        <span id="db-status" class="text-[10px] bg-indigo-500 px-2 py-0.5 rounded text-indigo-100">Демо База</span>
+                    </div>
 
-          <label class="block text-[10px] font-bold text-slate-400 mb-1">ПРОФИЛЬ БИЗНЕСА (АВТО)</label>
-          <select id="theme-selector" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 font-medium mb-3">
-            <option value="Rocket">Rocket Growth (Startups)</option>
-            <option value="Expansion">Expansion Compounder (NVDA)</option>
-            <option value="IndexTech">Index Tech / Growth (QQQ)</option>
-            <option value="Momentum">Quality Momentum (AAPL)</option>
-            <option value="Steady">Steady Compounder (SPY)</option>
-            <option value="IndexValue">Index Value / Blue Chip (DIA)</option>
-            <option value="Dividend">Dividend Stability (JPM)</option>
-            <option value="Fallen">Fallen Angel (PYPL)</option>
-            <option value="DeepValue">Deep Value (GM)</option>
-          </select>
+                    <!-- Excel Upload -->
+                    <div class="mb-4 relative group">
+                        <label for="excel-upload" class="flex items-center justify-center w-full px-4 py-2 bg-indigo-500 hover:bg-indigo-400 border border-indigo-400 border-dashed rounded cursor-pointer transition-colors text-xs font-bold uppercase select-none">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            Загрузить Excel (.xlsx)
+                        </label>
+                        <input id="excel-upload" type="file" accept=".xlsx, .xls" class="hidden" onchange="handleExcelUpload(event)">
+                        <div class="hidden group-hover:block absolute top-full left-0 w-full bg-slate-800 text-slate-200 text-[10px] p-3 rounded mt-1 z-20 shadow-xl border border-slate-600 leading-relaxed">
+                            <strong>Нужные колонки:</strong><br>
+                            Ticker, Price, RPS, Growth, Margin, WACC, Payout<br>
+                            <em class="text-slate-400">Опционально: Theme, N, PE, PS</em>
+                        </div>
+                    </div>
+                    <div id="upload-error" class="text-xs bg-red-500 text-white p-2 rounded mb-2 hidden"></div>
 
-          <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="col-span-2">
-              <div class="flex justify-between items-center">
-                <label class="block text-xs font-bold text-slate-700">Цена Акции ($)</label>
-                <div class="flex gap-2">
-                  <span id="disp-current-pe" class="text-[9px] text-slate-400 bg-slate-100 px-1 rounded" title="Текущий P/E">PE: --</span>
-                  <span id="disp-current-ps" class="text-[9px] text-slate-400 bg-slate-100 px-1 rounded" title="Текущий P/S">PS: --</span>
+                    <!-- Search -->
+                    <div class="flex gap-2">
+                        <input type="text" id="inp-ticker" placeholder="TICKER (e.g. SPY, QQQ)" class="w-full bg-indigo-700 border border-indigo-500 text-white placeholder-indigo-300 rounded px-3 py-2 font-bold uppercase focus:outline-none focus:ring-2 focus:ring-white">
+                        <button onclick="loadTicker()" class="bg-white text-indigo-600 px-4 py-2 rounded font-bold hover:bg-indigo-50 transition-colors">Go</button>
+                    </div>
+                    <div id="ticker-error" class="text-xs text-red-300 mt-2 hidden">Тикер не найден</div>
                 </div>
-              </div>
-              <input type="number" id="inp-price" class="w-full border-2 border-blue-100 p-2 rounded font-bold text-blue-800 text-lg" value="150" />
-            </div>
 
-            <div>
-              <label class="block text-xs text-slate-400">RPS ($)</label>
-              <input type="number" id="inp-rps" class="w-full border p-1 rounded" value="20" />
-            </div>
-            <div>
-              <label class="block text-xs text-slate-400">Рост (%)</label>
-              <input type="number" id="inp-growth" class="w-full border p-1 rounded font-bold text-green-600" value="10" />
-            </div>
-
-            <div class="col-span-2 bg-yellow-50 p-2 rounded border border-yellow-100">
-              <label class="block text-xs font-bold text-yellow-800">Прогноз Маржи (2025-27)</label>
-              <div class="flex items-center gap-2">
-                <input type="number" id="inp-forecast-margin" class="w-full bg-white border p-1 rounded font-bold text-slate-700" value="15.0" />
-                <span class="text-xs text-slate-500">%</span>
-              </div>
-            </div>
-
-            <div>
-              <div class="flex justify-between items-center">
-                <label class="block text-xs text-slate-400">Discount rate (r, %)</label>
-                <label class="flex items-center gap-1 text-[10px] font-bold text-slate-500 select-none" title="Auto: r = RF + β × ERP">
-                  <input id="chk-auto-dr" type="checkbox" class="accent-indigo-600" checked />
-                  Auto
-                </label>
-              </div>
-              <input type="number" id="inp-dr" class="w-full border p-1 rounded" value="8" step="0.01" min="0" />
-              <div class="mt-1 text-[10px] text-slate-400 flex justify-between">
-                <span>RF: <span id="disp-rf">--</span></span>
-                <span>ERP(SPY): <span id="disp-erp-spy">--</span></span>
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-xs text-slate-400 font-bold text-purple-600">Нач. Payout (%)</label>
-              <input type="number" id="inp-payout" class="w-full border-2 border-purple-100 p-1 rounded font-bold text-purple-700" value="30" />
-            </div>
-
-            <!-- ERP controls -->
-            <div class="col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <div class="flex justify-between items-center">
-                <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">ERP / DR режим</div>
-                <div class="text-[10px] text-slate-400" id="disp-dr-formula">r = RF + β×ERP = --</div>
-              </div>
-              <div class="mt-2 grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-500 uppercase">ERP mode</label>
-                  <select id="sel-erp-mode" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white font-bold">
-                    <option value="market">Market-implied (SPY)</option>
-                    <option value="manual">Manual</option>
-                  </select>
+                <!-- IRR CARD (Moved Up) -->
+                <div class="bg-slate-800 rounded-xl p-5 text-white shadow-xl">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">IRR (Прогноз)</h4>
+                            <div class="text-5xl font-bold tracking-tight" id="res-irr">--%</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-400 uppercase">Upside</div>
+                            <div id="res-upside" class="text-xl font-bold text-green-400">--%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3 pt-2 border-t border-slate-600 text-[10px] text-slate-400 flex justify-between">
+                        <span>Fair Value: <span id="res-fv" class="text-white font-bold">$---</span></span>
+                        <div class="text-right">
+                            <div class="text-[9px] text-slate-500">EXIT MULTIPLES</div>
+                            <div>
+                                <span class="text-slate-400 mr-1">P/E:</span><span id="res-exit-pe" class="text-white font-bold mr-2">--x</span>
+                                <span class="text-slate-400 mr-1">P/S:</span><span id="res-exit-ps" class="text-white font-bold">--x</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-500 uppercase">Manual ERP (%)</label>
-                  <input type="number" id="inp-erp-manual" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-bold" value="6.00" step="0.01" />
+
+                <!-- INPUTS -->
+                <div id="inputs-panel" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 border-l-4 border-l-slate-400 transition-colors duration-500">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-700 uppercase">1. Параметры Входа</h3>
+                        <div class="flex items-center gap-2">
+                            <!-- BUTTON RESET IS HERE -->
+                            <button onclick="resetToDefaults()" id="btn-reset" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors hidden" title="Вернуть исходные значения">
+                                ↺ Сброс
+                            </button>
+                            <span id="company-name" class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Custom</span>
+                        </div>
+                    </div>
+                    
+                    <label class="block text-[10px] font-bold text-slate-400 mb-1">ПРОФИЛЬ БИЗНЕСА (АВТО)</label>
+                    <select id="theme-selector" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 font-medium mb-3">
+                        <option value="Rocket">Rocket Growth (Startups)</option>
+                        <option value="Expansion">Expansion Compounder (NVDA)</option>
+                        <option value="IndexTech">Index Tech / Growth (QQQ)</option>
+                        <option value="Momentum">Quality Momentum (AAPL)</option>
+                        <option value="Steady">Steady Compounder (SPY)</option>
+                        <option value="IndexValue">Index Value / Blue Chip (DIA)</option>
+                        <option value="Dividend">Dividend Stability (JPM)</option>
+                        <option value="Fallen">Fallen Angel (PYPL)</option>
+                        <option value="DeepValue">Deep Value (GM)</option>
+                    </select>
+
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="col-span-2">
+                            <div class="flex justify-between items-center">
+                                <label class="block text-xs font-bold text-slate-700">Цена Акции ($)</label>
+                                <div class="flex gap-2">
+                                    <span id="disp-current-pe" class="text-[9px] text-slate-400 bg-slate-100 px-1 rounded" title="Текущий P/E">PE: --</span>
+                                    <span id="disp-current-ps" class="text-[9px] text-slate-400 bg-slate-100 px-1 rounded" title="Текущий P/S">PS: --</span>
+                                </div>
+                            </div>
+                            <input type="number" id="inp-price" class="w-full border-2 border-blue-100 p-2 rounded font-bold text-blue-800 text-lg" value="150">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-slate-400">RPS ($)</label>
+                            <input type="number" id="inp-rps" class="w-full border p-1 rounded" value="20">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400">Рост (%)</label>
+                            <input type="number" id="inp-growth" class="w-full border p-1 rounded font-bold text-green-600" value="10">
+                        </div>
+                        
+                        <div class="col-span-2 bg-yellow-50 p-2 rounded border border-yellow-100">
+                            <label class="block text-xs font-bold text-yellow-800">Прогноз Маржи (2025-27)</label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="inp-forecast-margin" class="w-full bg-white border p-1 rounded font-bold text-slate-700" value="15.0">
+                                <span class="text-xs text-slate-500">%</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-slate-400">Стоимость капитала (r, %)</label>
+                            <input type="number" id="inp-wacc" class="w-full border p-1 rounded" value="8" step="0.1" min="0">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 font-bold text-purple-600">Нач. Payout (%)</label>
+                            <input type="number" id="inp-payout" class="w-full border-2 border-purple-100 p-1 rounded font-bold text-purple-700" value="30">
+                        </div>
+                    </div>
                 </div>
-              </div>
-              <div class="mt-2 text-[10px] text-slate-400 leading-snug">
-                Auto DR ON: r считается автоматически. Если вручную изменишь r — Auto выключится. Если изменишь ERP — пересчитается FV (при Auto=ON).
-              </div>
-            </div>
 
-            <!-- ROIC SANITY CHECK -->
-            <div class="col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <div class="flex justify-between items-center">
-                <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">ROIC sanity (growth ↔ payout)</div>
-                <span id="roic-badge" class="text-[10px] px-2 py-0.5 rounded font-bold bg-slate-200 text-slate-700">--</span>
-              </div>
+                <!-- SCENARIO & RESULTS -->
+                <div id="scenario-panel" class="bg-white rounded-xl shadow-lg border border-slate-200 p-4 ring-1 ring-slate-200 transition-colors duration-500">
+                    <h3 class="text-sm font-bold text-slate-700 uppercase mb-3">2. Сценарный Двигатель</h3>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('pessimistic')" id="btn-pessimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-red-50 transition-all font-medium text-slate-600">Пессимизм</button>
+                            <div id="up-pessimistic" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('base')" id="btn-base" class="flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md transition-all font-bold">Базовый</button>
+                            <div id="up-base" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('optimistic')" id="btn-optimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-green-50 transition-all font-medium text-slate-600">Оптимизм</button>
+                            <div id="up-optimistic" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
+                        <div class="flex flex-col">
+                            <button onclick="setScenario('monte_carlo')" id="btn-monte_carlo" class="flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-md font-bold transition-all hover:bg-purple-700">🎲 М-Карло</button>
+                            <div id="up-monte_carlo" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
+                        </div>
+                    </div>
+                    
+                    <!-- MANUAL OVERRIDES BLOCK -->
+                    <div class="grid grid-cols-3 gap-3 mb-2 p-3 bg-slate-50 rounded border border-slate-100">
+                        <!-- Horizon -->
+                        <div>
+                            <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Горизонт (N лет)</label>
+                            <div class="flex items-center gap-1">
+                                <input type="range" id="slider-years" min="3" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600">
+                                <input type="number" id="val-years" min="3" max="35" class="w-10 text-[10px] font-bold text-blue-600 text-right border border-slate-300 rounded px-1 h-6" value="15">
+                            </div>
+                        </div>
+                        <!-- Target PE -->
+                        <div>
+                            <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Целевой P/E (N)</label>
+                            <input type="number" id="inp-exit-pe" class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white" placeholder="Auto">
+                        </div>
+                        <!-- Target Margin -->
+                        <div>
+                            <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Целевая Маржа (N)</label>
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="inp-term-margin" class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white" placeholder="Auto">
+                                <span class="text-[10px] text-slate-400 font-bold">%</span>
+                            </div>
+                        </div>
+                    </div>
 
-              <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                <div class="text-slate-500">ROIC</div>
-                <div class="text-right font-bold text-slate-700" id="roic-val">--</div>
-
-                <div class="text-slate-500">ROIC − r</div>
-                <div class="text-right font-bold" id="roic-spread">--</div>
-
-                <div class="text-slate-500">gEPS (2025–27)</div>
-                <div class="text-right font-bold text-slate-700" id="roic-geps">--</div>
-
-                <div class="text-slate-500">Payout max</div>
-                <div class="text-right font-bold" id="roic-pmax">--</div>
-              </div>
-
-              <div class="mt-2 text-[10px] leading-snug" id="roic-msg">--</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- SCENARIO -->
-        <div id="scenario-panel" class="bg-white rounded-xl shadow-lg border border-slate-200 p-4 ring-1 ring-slate-200 transition-colors duration-500">
-          <h3 class="text-sm font-bold text-slate-700 uppercase mb-3">2. Сценарный Двигатель</h3>
-
-          <div class="grid grid-cols-4 gap-2 mb-4">
-            <div class="flex flex-col">
-              <button onclick="setScenario('pessimistic')" id="btn-pessimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-red-50 transition-all font-medium text-slate-600">Пессимизм</button>
-              <div id="up-pessimistic" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
-            </div>
-            <div class="flex flex-col">
-              <button onclick="setScenario('base')" id="btn-base" class="flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md transition-all font-bold">Базовый</button>
-              <div id="up-base" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
-            </div>
-            <div class="flex flex-col">
-              <button onclick="setScenario('optimistic')" id="btn-optimistic" class="flex-1 py-3 text-xs border rounded-lg hover:bg-green-50 transition-all font-medium text-slate-600">Оптимизм</button>
-              <div id="up-optimistic" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
-            </div>
-            <div class="flex flex-col">
-              <button onclick="setScenario('monte_carlo')" id="btn-monte_carlo" class="flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-md font-bold transition-all hover:bg-purple-700">🎲 М-Карло</button>
-              <div id="up-monte_carlo" class="text-[10px] text-center mt-1 font-bold text-slate-400">--%</div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-3 gap-3 mb-2 p-3 bg-slate-50 rounded border border-slate-100">
-            <div>
-              <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Горизонт (N лет)</label>
-              <div class="flex items-center gap-1">
-                <input type="range" id="slider-years" min="3" max="35" step="1" class="w-full h-1.5 bg-slate-300 rounded-lg accent-blue-600" />
-                <input type="number" id="val-years" min="3" max="35"
-                  class="w-10 text-[10px] font-bold text-blue-600 text-right border border-slate-300 rounded px-1 h-6" value="15" />
-              </div>
-            </div>
-
-            <div>
-              <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Целевой P/E (N)</label>
-              <input type="number" id="inp-exit-pe"
-                class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white"
-                placeholder="Auto" />
-            </div>
-
-            <div>
-              <label class="text-[9px] font-bold text-slate-500 block mb-1 uppercase tracking-tighter">Целевая Маржа (N)</label>
-              <div class="flex items-center gap-1">
-                <input type="number" id="inp-term-margin"
-                  class="w-full h-7 border border-slate-300 rounded px-2 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-400 bg-white"
-                  placeholder="Auto" />
-                <span class="text-[10px] text-slate-400 font-bold">%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- BUYER'S RELAY -->
-        <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 shadow-sm">
-          <div class="flex justify-between items-center mb-3">
-            <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
-              <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
-            </h3>
-            <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены на каждый год</span>
-          </div>
-
-          <div class="overflow-y-auto custom-scroll" style="max-height: 180px;">
-            <table class="w-full text-xs text-left">
-              <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
-                <tr>
-                  <th class="py-1 px-2">Год</th>
-                  <th class="py-1 text-right">Fair Price</th>
-                  <th class="py-1 text-right">P/E</th>
-                  <th class="py-1 text-right">P/S</th>
-                  <th class="py-1 text-right pr-2">Yield (YoY)</th>
-                </tr>
-              </thead>
-              <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
-                <!-- JS -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- RIGHT COLUMN -->
-      <div class="lg:col-span-8 space-y-6">
-
-        <!-- REVERSE DCF -->
-        <div class="bg-slate-900 rounded-xl shadow-lg border border-slate-700 p-5 text-white">
-          <div class="flex justify-between items-start mb-4">
-            <div>
-              <h3 class="text-sm font-bold text-indigo-300 uppercase tracking-widest mb-1">Обратный DCF: Ожидания Рынка</h3>
-              <p class="text-xs text-slate-400">Что заложено в текущую цену (given assumptions)?</p>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-6 pb-4 border-b border-slate-700">
-            <div>
-              <div class="text-[10px] text-slate-400 uppercase mb-1">Implied Growth</div>
-              <div class="flex items-baseline gap-2">
-                <div id="rev-growth" class="text-3xl font-bold text-white">--%</div>
-                <span class="text-xs text-slate-500">CAGR</span>
-              </div>
-              <div class="mt-2 text-xs">
-                <span class="text-slate-500">Аналитики: </span>
-                <span id="rev-user-g" class="font-bold text-blue-400">--%</span>
-              </div>
-            </div>
-
-            <div class="pl-6 border-l border-slate-700">
-              <div class="text-[10px] text-slate-400 uppercase mb-1">Implied Discount rate</div>
-              <div class="flex items-baseline gap-2">
-                <div id="rev-dr" class="text-3xl font-bold text-yellow-400">--%</div>
-                <span class="text-xs text-slate-500">Risk</span>
-              </div>
-              <div class="mt-2 text-xs space-y-1">
-                <div>
-                  <span class="text-slate-500">Ваш r: </span>
-                  <span id="rev-user-dr" class="font-bold text-blue-400">--%</span>
                 </div>
-                <div class="text-[10px] text-slate-500">
-                  RF: <span id="rev-rf" class="text-slate-300 font-bold">--</span>
-                  &nbsp; ERP: <span id="rev-erp" class="text-slate-300 font-bold">--</span>
-                  &nbsp; β: <span id="rev-beta" class="text-slate-300 font-bold">--</span>
+                
+                <!-- NEW: BUYER'S RELAY BLOCK -->
+                <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mt-6 shadow-sm">
+                    <div class="flex justify-between items-center mb-3">
+                         <h3 class="text-xs font-bold text-indigo-800 uppercase flex items-center gap-2">
+                            <span class="text-lg">🏃</span> Эстафета Покупателей (Recursive)
+                        </h3>
+                         <span class="text-[9px] text-indigo-400 font-medium">Прогноз цены на каждый год</span>
+                    </div>
+                    
+                    <!-- SCROLLABLE TABLE FOR RELAY -->
+                    <div class="overflow-y-auto custom-scroll" style="max-height: 180px;">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-indigo-100 text-indigo-700 sticky top-0 font-bold">
+                                <tr>
+                                    <th class="py-1 px-2">Год</th>
+                                    <th class="py-1 text-right">Fair Price</th>
+                                    <th class="py-1 text-right">P/E</th>
+                                    <th class="py-1 text-right">P/S</th>
+                                    <th class="py-1 text-right pr-2">Yield (YoY)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="relay-table-body" class="divide-y divide-indigo-100 bg-white">
+                                <!-- JS Populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-              </div>
-            </div>
-          </div>
 
-          <div class="pt-3 flex justify-between items-center">
-            <div class="text-[10px] text-slate-500">Вердикт (по росту):</div>
-            <div id="rev-verdict" class="text-sm font-bold text-slate-300">--</div>
-          </div>
+            </div>
+
+            <!-- RIGHT COLUMN: VISUALS -->
+            <div class="lg:col-span-8 space-y-6">
+                
+                <!-- REVERSE DCF -->
+                <div class="bg-slate-900 rounded-xl shadow-lg border border-slate-700 p-5 text-white">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-sm font-bold text-indigo-300 uppercase tracking-widest mb-1">Обратный DCF: Ожидания Рынка</h3>
+                            <p class="text-xs text-slate-400">Что заложено в текущую цену?</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-6 pb-4 border-b border-slate-700">
+                        <!-- Implied Growth -->
+                        <div>
+                            <div class="text-[10px] text-slate-400 uppercase mb-1">Implied Growth</div>
+                            <div class="flex items-baseline gap-2">
+                                <div id="rev-growth" class="text-3xl font-bold text-white">--%</div>
+                                <span class="text-xs text-slate-500">CAGR</span>
+                            </div>
+                            <div class="mt-2 text-xs">
+                                <span class="text-slate-500">Аналитики: </span>
+                                <span id="rev-user-g" class="font-bold text-blue-400">--%</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Implied WACC -->
+                        <div class="pl-6 border-l border-slate-700">
+                            <div class="text-[10px] text-slate-400 uppercase mb-1">Implied WACC</div>
+                            <div class="flex items-baseline gap-2">
+                                <div id="rev-wacc" class="text-3xl font-bold text-yellow-400">--%</div>
+                                <span class="text-xs text-slate-500">Risk</span>
+                            </div>
+                            <div class="mt-2 text-xs">
+                                <span class="text-slate-500">Ваш WACC: </span>
+                                <span id="rev-user-wacc" class="font-bold text-blue-400">--%</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="pt-3 flex justify-between items-center">
+                        <div class="text-[10px] text-slate-500">Вердикт (по росту):</div>
+                        <div id="rev-verdict" class="text-sm font-bold text-slate-300">--</div>
+                    </div>
+                </div>
+
+                <!-- LIFECYCLE CHART & METRICS -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <h3 class="text-sm font-bold text-slate-700 mb-4">Жизненный Цикл и Целевые Показатели</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Chart -->
+                        <div>
+                            <div class="lc-chart-container">
+                                <canvas id="lifecycleChart"></canvas>
+                            </div>
+                            <div class="text-center text-[10px] text-slate-400 mt-2 italic">
+                                Карта рынка: Точки тем (серые), ETF (квадраты) и Ваша Компания (круг)
+                            </div>
+                        </div>
+
+                        <!-- Targets Table -->
+                        <div class="flex flex-col justify-center">
+                            <table class="w-full text-sm text-left border-collapse">
+                                <thead>
+                                    <tr class="text-[10px] uppercase text-slate-400 border-b border-slate-100">
+                                        <th class="py-2 pl-2">Показатель</th>
+                                        <th class="py-2 text-right">Текущий</th>
+                                        <th class="py-2 text-right text-blue-600 font-bold">Цель (Mid)</th>
+                                        <th class="py-2 text-right text-slate-500">Терминал</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="lifecycle-table-body" class="text-xs font-medium divide-y divide-slate-50">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                            <div class="mt-3 text-[10px] text-slate-400 bg-slate-50 p-2 rounded">
+                                <strong>Как читать:</strong> Модель плавно интерполирует значения от "Текущих" к "Целевым" (фаза роста) и затем к "Терминальным" (зрелость).
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SENSITIVITY MATRIX / MONTE CARLO -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <div class="flex justify-between items-end mb-2">
+                        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-widest" id="sens-title">Матрица Справедливой Цены (PV Today)</h4>
+                        <span class="text-[10px] text-slate-500" id="sens-subtitle">Влияние ставки (r) и мультипликатора (P/E)</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-1 text-center select-none" id="sens-grid">
+                        <!-- JS Generated -->
+                    </div>
+                    <!-- Monte Carlo Stats Container (Hidden by default) -->
+                    <div id="mc-stats" class="hidden grid-cols-3 gap-4 text-center py-4">
+                        <div class="bg-red-50 p-2 rounded border border-red-100">
+                            <div class="text-[10px] text-red-500 font-bold uppercase">P10 (Pessimistic)</div>
+                            <div class="text-lg font-bold text-slate-700" id="mc-p10">$---</div>
+                            <div class="text-[10px] font-bold" id="mc-p10-up">--%</div>
+                            <div class="text-[9px] text-slate-400">90% chance > this</div>
+                        </div>
+                        <div class="bg-blue-50 p-2 rounded border border-blue-200 ring-2 ring-blue-100">
+                            <div class="text-[10px] text-blue-600 font-bold uppercase">P50 (Median)</div>
+                            <div class="text-2xl font-bold text-slate-800" id="mc-p50">$---</div>
+                            <div class="text-[10px] font-bold" id="mc-p50-up">--%</div>
+                            <div class="text-[9px] text-slate-400">Base Expectation</div>
+                        </div>
+                        <div class="bg-green-50 p-2 rounded border border-green-100">
+                            <div class="text-[10px] text-green-600 font-bold uppercase">P90 (Optimistic)</div>
+                            <div class="text-lg font-bold text-slate-700" id="mc-p90">$---</div>
+                            <div class="text-[10px] font-bold" id="mc-p90-up">--%</div>
+                            <div class="text-[9px] text-slate-400">10% chance > this</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CALCULATION DETAILS TABLE -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex justify-between">
+                        <h3 class="text-sm font-bold text-slate-700">Детализация Расчета</h3>
+                        <span class="text-xs text-slate-400">Номинальные значения ($)</span>
+                    </div>
+                    <div class="overflow-x-auto custom-scroll" style="max-height: 350px;">
+                        <table class="w-full text-sm text-left">
+                            <thead class="text-xs text-slate-500 uppercase bg-white sticky top-0 border-b">
+                                <tr>
+                                    <th class="px-4 py-2">Год</th>
+                                    <th class="px-4 py-2">Фаза</th>
+                                    <th class="px-4 py-2 text-right">RPS</th>
+                                    <th class="px-4 py-2 text-right">Маржа</th>
+                                    <th class="px-4 py-2 text-right">EPS</th>
+                                    <th class="px-4 py-2 text-right text-purple-600">Payout</th>
+                                    <th class="px-4 py-2 text-right font-bold text-blue-600">Flow</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
         </div>
-
-        <!-- LIFECYCLE -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <h3 class="text-sm font-bold text-slate-700 mb-4">Жизненный Цикл и Целевые Показатели</h3>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <div class="lc-chart-container">
-                <canvas id="lifecycleChart"></canvas>
-              </div>
-              <div class="text-center text-[10px] text-slate-400 mt-2 italic">
-                Карта рынка: Точки тем (серые), ETF (квадраты) и Ваша Компания (круг)
-              </div>
-            </div>
-
-            <div class="flex flex-col justify-center">
-              <table class="w-full text-sm text-left border-collapse">
-                <thead>
-                  <tr class="text-[10px] uppercase text-slate-400 border-b border-slate-100">
-                    <th class="py-2 pl-2">Показатель</th>
-                    <th class="py-2 text-right">Текущий</th>
-                    <th class="py-2 text-right text-blue-600 font-bold">Цель (Mid)</th>
-                    <th class="py-2 text-right text-slate-500">Терминал</th>
-                  </tr>
-                </thead>
-                <tbody id="lifecycle-table-body" class="text-xs font-medium divide-y divide-slate-50"></tbody>
-              </table>
-              <div class="mt-3 text-[10px] text-slate-400 bg-slate-50 p-2 rounded">
-                <strong>Как читать:</strong> Модель плавно интерполирует значения от "Текущих" к "Целевым" и затем к "Терминальным".
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- SENSITIVITY / MC -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <div class="flex justify-between items-end mb-2">
-            <h4 class="text-xs font-bold text-slate-700 uppercase tracking-widest" id="sens-title">Матрица Справедливой Цены (PV Today)</h4>
-            <span class="text-[10px] text-slate-500" id="sens-subtitle">Влияние ставки (r) и мультипликатора (P/E)</span>
-          </div>
-
-          <div class="grid grid-cols-4 gap-1 text-center select-none" id="sens-grid"></div>
-
-          <div id="mc-stats" class="hidden grid-cols-3 gap-4 text-center py-4">
-            <div class="bg-red-50 p-2 rounded border border-red-100">
-              <div class="text-[10px] text-red-500 font-bold uppercase">P10 (Pessimistic)</div>
-              <div class="text-lg font-bold text-slate-700" id="mc-p10">$---</div>
-              <div class="text-[10px] font-bold" id="mc-p10-up">--%</div>
-              <div class="text-[9px] text-slate-400">90% chance &gt; this</div>
-            </div>
-            <div class="bg-blue-50 p-2 rounded border border-blue-200 ring-2 ring-blue-100">
-              <div class="text-[10px] text-blue-600 font-bold uppercase">P50 (Median)</div>
-              <div class="text-2xl font-bold text-slate-800" id="mc-p50">$---</div>
-              <div class="text-[10px] font-bold" id="mc-p50-up">--%</div>
-              <div class="text-[9px] text-slate-400">Base Expectation</div>
-            </div>
-            <div class="bg-green-50 p-2 rounded border border-green-100">
-              <div class="text-[10px] text-green-600 font-bold uppercase">P90 (Optimistic)</div>
-              <div class="text-lg font-bold text-slate-700" id="mc-p90">$---</div>
-              <div class="text-[10px] font-bold" id="mc-p90-up">--%</div>
-              <div class="text-[9px] text-slate-400">10% chance &gt; this</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- DETAILS TABLE -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex justify-between">
-            <h3 class="text-sm font-bold text-slate-700">Детализация Расчета</h3>
-            <span class="text-xs text-slate-400">Номинальные значения ($)</span>
-          </div>
-          <div class="overflow-x-auto custom-scroll" style="max-height: 350px;">
-            <table class="w-full text-sm text-left">
-              <thead class="text-xs text-slate-500 uppercase bg-white sticky top-0 border-b">
-                <tr>
-                  <th class="px-4 py-2">Год</th>
-                  <th class="px-4 py-2">Фаза</th>
-                  <th class="px-4 py-2 text-right">RPS</th>
-                  <th class="px-4 py-2 text-right">Маржа</th>
-                  <th class="px-4 py-2 text-right">EPS</th>
-                  <th class="px-4 py-2 text-right text-purple-600">Payout</th>
-                  <th class="px-4 py-2 text-right font-bold text-blue-600">Flow</th>
-                </tr>
-              </thead>
-              <tbody id="table-body" class="divide-y divide-slate-100"></tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
     </div>
-  </div>
 
-  <script>
-    // --------------------------
-    // CONFIG
-    // --------------------------
-    const TAIL_PENALTY = { START_YEAR: 15, EXTRA_DR: 0.01 };
-
-    const CONFIG = {
-      ANALYST_YEARS: 3,          // 2025–27
-      IRR_MAX_ITER: 1000,
-      IRR_TOL: 1e-6,
-      IRR_MIN_RATE: -0.99,
-      IRR_MAX_RATE: 5
-    };
-
-    const THEME_ORDER = ['Rocket','Expansion','IndexTech','Momentum','Steady','IndexValue','Dividend','DeepValue','Fallen'];
-
-    // --------------------------
-    // DEMO DB (percent fields as %; rates stored as % in DB, normalized later)
-    // --------------------------
-    const DEMO_DB = {
-      'SPY':  { name:'S&P 500 ETF', price:683.39, rps:200.7, growth:8.2, margin:14.9, payout:27.1, profile:'Steady', ps:3.40, pe:22.8, beta:1.00, roic:0.19, dr:8.0 },
-      'QQQ':  { name:'Invesco QQQ (Nasdaq)', price:445.0, rps:130.5, growth:11.0, margin:19.5, payout:10, profile:'IndexTech', ps:6.2, pe:31.5, beta:1.10, roic:0.22, dr:8.5 },
-      'DIA':  { name:'SPDR Dow Jones', price:395.0, rps:280.0, growth:6.5, margin:12.5, payout:35, profile:'IndexValue', ps:2.8, pe:22.0, beta:0.95, roic:0.17, dr:7.5 },
-      'AAPL': { name:'Apple Inc.', price:189.5, rps:24.5, growth:6.5, margin:26.5, payout:15, ps:7.7, pe:29.0, beta:1.25, roic:0.30, dr:8.5 },
-      'NVDA': { name:'Nvidia Corp', price:880.0, rps:24.8, growth:65.0, margin:55.0, payout:2, ps:35.0, pe:65.0, beta:1.65, roic:0.45, dr:9.0 },
-      'TSLA': { name:'Tesla Inc', price:175.2, rps:30.1, growth:15.0, margin:10.5, payout:0, ps:5.8, pe:55.0, beta:2.00, roic:0.18, dr:10.5 },
-      'MSFT': { name:'Microsoft', price:420.0, rps:31.5, growth:12.0, margin:36.0, payout:25, ps:13.0, pe:36.0, beta:1.05, roic:0.35, dr:8.0 },
-      'AMZN': { name:'Amazon', price:178.0, rps:55.0, growth:11.0, margin:6.5, payout:0, ps:3.2, pe:45.0, beta:1.30, roic:0.14, dr:9.0 },
-      'GOOGL':{ name:'Alphabet', price:173.0, rps:24.0, growth:10.0, margin:24.0, payout:10, ps:6.5, pe:24.0, beta:1.10, roic:0.25, dr:8.5 }
-    };
-
-    let GLOBAL_DB = { ...DEMO_DB };
-
-    // Theme metrics (used for target trajectories and terminal anchors)
-    const METRICS = {
-      'Rocket':     { name:'Rocket',      growth:40,  margin:3.8,  pe:407.9, ps:15.39, payout:0,  N:20, lcX:15 },
-      'Expansion':  { name:'Expansion',   growth:20,  margin:33.9, pe:24.0,  ps:8.13,  payout:15, N:15, lcX:30 },
-      'IndexTech':  { name:'Index Tech',  growth:11,  margin:24.0, pe:26.0,  ps:6.20,  payout:15, N:15, lcX:40 },
-      'Momentum':   { name:'Momentum',    growth:14.3,margin:26.0, pe:22.1,  ps:5.73,  payout:50, N:12, lcX:55 },
-      'Steady':     { name:'Steady',      growth:7.9, margin:14.0, pe:22.0,  ps:3.10,  payout:45, N:12, lcX:65 },
-      'IndexValue': { name:'Index Value', growth:6.5, margin:12.5, pe:19.5,  ps:2.45,  payout:40, N:12, lcX:75 },
-      'Dividend':   { name:'Dividend',    growth:6.0, margin:14.8, pe:13.5,  ps:2.00,  payout:75, N:9,  lcX:85 },
-      'DeepValue':  { name:'Value',       growth:2.7, margin:12.1, pe:11.7,  ps:1.42,  payout:50, N:6,  lcX:95 },
-      'Fallen':     { name:'Fallen',      growth:22.4,margin:7.5,  pe:14.0,  ps:1.05,  payout:30, N:9,  lcX:90 }
-    };
-
-    const BASE_CHAINS = {
-      'Rocket':     ['Rocket','Expansion','Momentum'],
-      'Expansion':  ['Expansion','Momentum','Steady'],
-      'IndexTech':  ['IndexTech','Momentum','Steady'],
-      'Momentum':   ['Momentum','Steady','Dividend'],
-      'Steady':     ['Steady','Dividend','DeepValue'],
-      'IndexValue': ['IndexValue','Dividend','DeepValue'],
-      'Dividend':   ['Dividend','DeepValue','DeepValue'],
-      'Fallen':     ['Fallen','DeepValue','Steady'],
-      'DeepValue':  ['DeepValue','Steady','Dividend']
-    };
-
-    let state = {
-      scenario: 'base',
-      charts: {},
-      userSetYears: false,
-      currentTicker: '',
-      maxNFromFile: null,
-
-      // CAPM inputs
-      rf: 0.0414,          // decimal
-      rfFromFile: false,
-      erpSpy: null,        // decimal
-      autoDR: true,
-      erpMode: 'market',   // 'market'|'manual'
-      manualERP: 0.06,     // decimal
-
-      // internal
-      _suppressAutoToggle: false
-    };
-
-    // --------------------------
-    // HELPERS
-    // --------------------------
-    function safeSetText(id, text) { const el = document.getElementById(id); if (el) el.innerText = text; }
-    function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
-    function formatCurrency(n) { return n == null || !isFinite(n) ? '$---' : n.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2}); }
-    function formatPercent(n) { return n == null || !isFinite(n) ? '--%' : n.toFixed(1)+'%'; }
-
-    function normalizeRate(x){
-      if (x == null || !isFinite(x)) return null;
-      return x > 1 ? x/100 : x;
-    }
-
-    function fmtPctDec(xDec){
-      if (xDec == null || !isFinite(xDec)) return '--';
-      return (xDec*100).toFixed(2) + '%';
-    }
-
-    function fmtPP(xDec){
-      if (xDec == null || !isFinite(xDec)) return '--';
-      const pp = xDec * 100;
-      const sign = pp >= 0 ? '+' : '';
-      return `${sign}${pp.toFixed(1)} п.п.`;
-    }
-
-    function cagr(a, b, years){
-      if (!isFinite(a) || !isFinite(b) || a <= 0 || b <= 0 || years <= 0) return null;
-      return Math.pow(b/a, 1/years) - 1;
-    }
-
-    function setBadge(el, level, text){
-      const cls = {
-        green:  "bg-green-100 text-green-800",
-        yellow: "bg-yellow-100 text-yellow-800",
-        red:    "bg-red-100 text-red-800",
-        na:     "bg-slate-200 text-slate-700"
-      };
-      el.className = `text-[10px] px-2 py-0.5 rounded font-bold ${cls[level] || cls.na}`;
-      el.innerText = text;
-    }
-
-    function getBetaForTicker(ticker){
-      const row = GLOBAL_DB[ticker] || {};
-      const b = row.beta;
-      return (b != null && isFinite(b)) ? b : 1.0;
-    }
-
-    function getERPUsed(){
-      const modeSel = document.getElementById('sel-erp-mode');
-      const mode = modeSel ? modeSel.value : state.erpMode;
-      state.erpMode = mode;
-
-      if (mode === 'market' && state.erpSpy != null && isFinite(state.erpSpy)) return state.erpSpy;
-      return state.manualERP;
-    }
-
-    function updateHeaderRatesUI(){
-      safeSetText('disp-rf', fmtPctDec(state.rf));
-      safeSetText('disp-erp-spy', (state.erpSpy!=null && isFinite(state.erpSpy)) ? fmtPctDec(state.erpSpy) : '--');
-    }
-
-    function updateDRFormulaUI(ticker){
-      const beta = getBetaForTicker(ticker);
-      const erp = getERPUsed();
-      const rf = state.rf ?? 0.0414;
-      const dr = rf + beta * erp;
-
-      safeSetText('disp-dr-formula', `r = ${fmtPctDec(rf)} + ${beta.toFixed(2)}×${fmtPctDec(erp)} = ${fmtPctDec(dr)}`);
-    }
-
-    // --------------------------
-    // EXCEL IMPORT
-    // --------------------------
-    function normalizeTheme(raw) {
-      if (!raw) return null;
-      const str = String(raw).toLowerCase().trim();
-      const keys = Object.keys(METRICS);
-      const exact = keys.find(k => k.toLowerCase() === str);
-      if (exact) return exact;
-
-      if (str.includes('nasdaq') || str.includes('qqq') || str.includes('tech index')) return 'IndexTech';
-      if (str.includes('dow') || str.includes('dia') || str.includes('value index')) return 'IndexValue';
-      if (str.includes('rocket') || str.includes('start')) return 'Rocket';
-      if (str.includes('expansion') || str.includes('nvda')) return 'Expansion';
-      if (str.includes('momentum') || str.includes('quality')) return 'Momentum';
-      if (str.includes('steady') || str.includes('compounder')) return 'Steady';
-      if (str.includes('dividend') || str.includes('yield')) return 'Dividend';
-      if (str.includes('deep') || str.includes('value')) return 'DeepValue';
-      if (str.includes('fallen')) return 'Fallen';
-      return null;
-    }
-
-    function extractDataFromSheet(rows){
-      const newDB = {};
-      let count = 0;
-      if (!rows || rows.length === 0) return { count: 0, db: {} };
-
-      let headerRowIndex = -1;
-      let colMap = {};
-
-      const keyMap = {
-        ticker: ['ticker', 'symbol', 'code', 'тикер'],
-        price: ['price', 'close', 'last', 'цена'],
-        rps: ['rps', 'revenue', 'sales', 'выручка'],
-        growth: ['growth', 'cagr', 'рост'],
-        margin: ['margin', 'net margin', 'margin %', 'маржа'],
-        payout: ['payout', 'dividen', 'дивиден'],
-        theme: ['theme', 'profile', 'strategy', 'тема'],
-        n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon'],
-        pe: ['pe', 'p/e', 'forward pe', 'pe_curr', 'p/e ratio'],
-        ps: ['ps', 'p/s', 'forward ps', 'ps_curr', 'p/s ratio'],
-        beta: ['beta', 'β', 'betа'],
-        roic: ['roic', 'return on invested capital', 'roic %', 'роic', 'роик'],
-        rf: ['rf', 'risk free', 'risk-free', '10y', 'treasury', 'ust10', 'ставка rf'],
-        dr: ['discount rate', 'dr', 'wacc', 'cost of capital', 'ставка', 'ks']
-      };
-
-      for (let i=0; i<Math.min(rows.length, 20); i++){
-        const row = rows[i];
-        let tempMap = {};
-        row.forEach((cell, cellIdx) => {
-          if (!cell) return;
-          const val = String(cell).toLowerCase().replace(/\./g,'').trim();
-          for (const [key, candidates] of Object.entries(keyMap)){
-            const isMatch = candidates.some(c => {
-              const cc = String(c).toLowerCase().replace(/\./g,'').trim();
-              if (cc.length <= 3) return val === cc || val.startsWith(cc+' ') || val.includes(' '+cc);
-              return val.includes(cc);
-            });
-            if (isMatch && tempMap[key] === undefined) tempMap[key] = cellIdx;
-          }
-        });
-        if (tempMap.ticker !== undefined && tempMap.price !== undefined){
-          headerRowIndex = i;
-          colMap = tempMap;
-          break;
-        }
-      }
-
-      if (headerRowIndex === -1) return { count: 0, db: {} };
-
-      for (let i=headerRowIndex+1; i<rows.length; i++){
-        const row = rows[i];
-        if (!row || row.length === 0) continue;
-
-        const getValue = (key) => {
-          const idx = colMap[key];
-          return idx !== undefined ? row[idx] : null;
+    <script>
+        // --- CONFIGURATION ---
+        const TAIL_PENALTY = {
+            START_YEAR: 15,   
+            EXTRA_DR: 0.01    
         };
 
-        const rawTicker = getValue('ticker');
-        const rawPrice = getValue('price');
-        if (!rawTicker || !rawPrice) continue;
-
-        const ticker = String(rawTicker).trim().toUpperCase();
-        const safeFloat = (val, def) => {
-          const parsed = parseFloat(val);
-          return isNaN(parsed) ? def : parsed;
+        const CONFIG = {
+            ANALYST_YEARS: 2,
+            DEFAULT_WACC: 0.08,
+            IRR_MAX_ITER: 1000,
+            IRR_TOL: 1e-6,
+            IRR_MIN_RATE: -0.99,
+            IRR_MAX_RATE: 5
         };
 
-        // RF: read once from any row
-        const rawRF = getValue('rf');
-        if (!state.rfFromFile && rawRF != null && isFinite(parseFloat(rawRF))){
-          const rfDec = normalizeRate(parseFloat(rawRF));
-          if (rfDec != null) {
-            state.rf = rfDec;
-            state.rfFromFile = true;
-          }
+        const THEME_ORDER = ['Rocket', 'Expansion', 'IndexTech', 'Momentum', 'Steady', 'IndexValue', 'Dividend', 'DeepValue', 'Fallen'];
+        
+        // --- DEMO DATABASE ---
+        const DEMO_DB = {
+            'SPY': { name: 'S&P 500 ETF', price: 683.39, rps: 200.7, growth: 8.2, margin: 14.9, wacc: 8.0, payout: 27.1, profile: 'Steady', ps: 3.40, pe: 22.8 }, 
+            'QQQ': { name: 'Invesco QQQ (Nasdaq)', price: 445.0, rps: 130.5, growth: 11.0, margin: 19.5, wacc: 8.5, payout: 10, profile: 'IndexTech', ps: 6.2, pe: 31.5 }, 
+            'DIA': { name: 'SPDR Dow Jones', price: 395.0, rps: 280.0, growth: 6.5, margin: 12.5, wacc: 7.5, payout: 35, profile: 'IndexValue', ps: 2.8, pe: 22.0 }, 
+            'AAPL': { name: 'Apple Inc.', price: 189.5, rps: 24.5, growth: 6.5, margin: 26.5, wacc: 8.5, payout: 15, ps: 7.7, pe: 29.0 },
+            'NVDA': { name: 'Nvidia Corp', price: 880.0, rps: 24.8, growth: 65.0, margin: 55.0, wacc: 9.0, payout: 2, ps: 35.0, pe: 65.0 },
+            'TSLA': { name: 'Tesla Inc', price: 175.2, rps: 30.1, growth: 15.0, margin: 10.5, wacc: 10.5, payout: 0, ps: 5.8, pe: 55.0 },
+            'MSFT': { name: 'Microsoft', price: 420.0, rps: 31.5, growth: 12.0, margin: 36.0, wacc: 8.0, payout: 25, ps: 13.0, pe: 36.0 },
+            'AMZN': { name: 'Amazon', price: 178.0, rps: 55.0, growth: 11.0, margin: 6.5, wacc: 9.0, payout: 0, ps: 3.2, pe: 45.0 },
+            'GOOGL': { name: 'Alphabet', price: 173.0, rps: 24.0, growth: 10.0, margin: 24.0, wacc: 8.5, payout: 10, ps: 6.5, pe: 24.0 }
+        };
+
+        // Current Active DB
+        let GLOBAL_DB = { ...DEMO_DB };
+
+        // METRICS with P/S field added
+        const METRICS = {
+            'Rocket':    { name: 'Rocket',    growth: 40,    margin: 3.8,   pe: 407.9, ps: 15.39, payout: 0,  N: 20, lcX: 15 }, 
+            'Expansion': { name: 'Expansion', growth: 20.0, margin: 33.9,  pe: 24.0,  ps: 8.13,  payout: 15, N: 15, lcX: 30 }, 
+            'IndexTech': { name: 'Index Tech',growth: 11.0, margin: 24.0,  pe: 26.0,  ps: 6.20,  payout: 15, N: 15, lcX: 40 }, 
+            'Momentum':  { name: 'Momentum',  growth: 14.3, margin: 26.0,  pe: 22.1,  ps: 5.73,  payout: 50, N: 12, lcX: 55 }, 
+            'Steady':    { name: 'Steady',    growth: 7.9,  margin: 14.0,  pe: 22.0,  ps: 3.10,  payout: 45, N: 12, lcX: 65 }, 
+            'IndexValue':{ name: 'Index Value',growth: 6.5, margin: 12.5,  pe: 19.5,  ps: 2.45,  payout: 40, N: 12, lcX: 75 }, 
+            'Dividend':  { name: 'Dividend',  growth: 6.0,  margin: 14.8,  pe: 13.5,  ps: 2.00,  payout: 75, N: 9,  lcX: 85 },
+            'DeepValue': { name: 'Value',     growth: 2.7,  margin: 12.1,  pe: 11.7,  ps: 1.42,  payout: 50, N: 6,  lcX: 95 },
+            'Fallen':    { name: 'Fallen',    growth: 22.4, margin: 7.5,   pe: 14.0,  ps: 1.05,  payout: 30, N: 9,  lcX: 90 } 
+        };
+
+        // ... (Chains remain same)
+        const BASE_CHAINS = {
+            'Rocket':    ['Rocket', 'Expansion', 'Momentum'],
+            'Expansion': ['Expansion', 'Momentum', 'Steady'],
+            'IndexTech': ['IndexTech', 'Momentum', 'Steady'],
+            'Momentum':  ['Momentum', 'Steady', 'Dividend'],
+            'Steady':    ['Steady', 'Dividend', 'DeepValue'],
+            'IndexValue':['IndexValue', 'Dividend', 'DeepValue'],
+            'Dividend':  ['Dividend', 'DeepValue', 'DeepValue'],
+            'Fallen':    ['Fallen', 'DeepValue', 'Steady'],
+            'DeepValue': ['DeepValue', 'Steady', 'Dividend']
+        };
+
+        const EDGE_MODS = {
+            rocket_opt: { pe: 1.25, margin: 1.2, growth: 1.1 },
+            deep_pess:  { pe: 0.8,  margin: 0.8, growth: 0.8 }
+        };
+
+        let state = { 
+            scenario: 'base', 
+            charts: {}, 
+            userSetYears: false, 
+            currentTicker: '',
+            maxNFromFile: null,
+            isPEManual: false // NEW FLAG to track manual PE entry
+        };
+        
+        // Bell Curve for charts
+        const bellCurve = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2)));
+
+        // --- RANDOM HELPER for Monte Carlo ---
+        function randomNormal(mean, stdDev) {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random(); 
+            while(v === 0) v = Math.random();
+            const z = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+            return mean + z * stdDev;
         }
 
-        const drPct = safeFloat(getValue('dr'), null); // percent if present
-        const roicDec = normalizeRate(safeFloat(getValue('roic'), null));
-        const betaVal = safeFloat(getValue('beta'), null);
-
-        const nVal = safeFloat(getValue('n'), null);
-
-        newDB[ticker] = {
-          name: ticker + ' (Excel)',
-          price: safeFloat(rawPrice, 0),
-          rps: safeFloat(getValue('rps'), 10),
-          growth: safeFloat(getValue('growth'), 5),
-          margin: safeFloat(getValue('margin'), 10),
-          payout: safeFloat(getValue('payout'), 0),
-          profile: normalizeTheme(getValue('theme')),
-          n_term: nVal,
-          pe: safeFloat(getValue('pe'), null),
-          ps: safeFloat(getValue('ps'), null),
-          beta: isFinite(betaVal) ? betaVal : null,
-          roic: (roicDec != null && isFinite(roicDec)) ? roicDec : null,
-          dr: isFinite(drPct) ? drPct : null
-        };
-        count++;
-      }
-
-      return { count, db: newDB };
-    }
-
-    function handleExcelUpload(e){
-      const errEl = document.getElementById('upload-error');
-      errEl.classList.add('hidden');
-
-      if (typeof XLSX === 'undefined'){
-        errEl.innerText = "Ошибка: Библиотека Excel не загрузилась.";
-        errEl.classList.remove('hidden');
-        return;
-      }
-
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(ev){
-        try{
-          const data = new Uint8Array(ev.target.result);
-          const workbook = XLSX.read(data, {type:'array'});
-          let successCount = 0;
-
-          for (const sheetName of workbook.SheetNames){
-            const worksheet = workbook.Sheets[sheetName];
-            const rawData = XLSX.utils.sheet_to_json(worksheet, {header:1});
-            const res = extractDataFromSheet(rawData);
-            if (res && res.count > 0){
-              GLOBAL_DB = { ...GLOBAL_DB, ...res.db };
-              successCount += res.count;
+        // --- EXCEL LOGIC ---
+        function handleExcelUpload(e) {
+            const errEl = document.getElementById('upload-error');
+            errEl.classList.add('hidden');
+            
+            if (typeof XLSX === 'undefined') {
+                errEl.innerText = "Ошибка: Библиотека Excel не загрузилась.";
+                errEl.classList.remove('hidden');
+                return;
             }
-          }
 
-          updateHeaderRatesUI();
-          updateMarketERPSpy(); // recompute ERP from updated SPY & rf
-
-          if (successCount > 0){
-            document.getElementById('db-status').innerText = `Excel (${successCount} шт.)`;
-            document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
-
-            if (GLOBAL_DB['SPY']){
-              document.getElementById('inp-ticker').value = 'SPY';
-              loadTicker();
-            } else {
-              alert(`Успешно загружено ${successCount} компаний! Введите тикер в поиск.`);
-            }
-          } else {
-            errEl.innerText = "Не удалось найти данные. Проверьте заголовки (Ticker, Price...).";
-            errEl.classList.remove('hidden');
-          }
-        } catch(err){
-          console.error(err);
-          errEl.innerText = "Ошибка чтения файла.";
-          errEl.classList.remove('hidden');
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    }
-
-    // --------------------------
-    // PROFILE DETECTION
-    // --------------------------
-    function detectProfile(data){
-      const g = data.growth;
-      const m = data.margin;
-      const p = data.payout;
-      if (data.name && data.name.includes('Nasdaq')) return 'IndexTech';
-      if (data.name && data.name.includes('Dow')) return 'IndexValue';
-      if (g > 30) return 'Rocket';
-      if (g > 15 && m > 20) return 'Expansion';
-      if (g > 10 && m > 15 && p > 10) return 'Momentum';
-      if (p > 60) return 'Dividend';
-      if (g < 5 && p > 0) return 'DeepValue';
-      if (g > 15 && m < 10) return 'Fallen';
-      return 'Steady';
-    }
-
-    // --------------------------
-    // SCENARIO PARAMS
-    // --------------------------
-    function getCalcParams(selected, scenario, ticker){
-      let res = { themeKey:selected, mods:{pe:1, margin:1, growth:1}, chain: BASE_CHAINS[selected] || ['Steady','Steady','Steady'] };
-
-      if (['SPY','QQQ','DIA'].includes(ticker)){
-        if (ticker === 'QQQ') res.chain = ['IndexTech','IndexTech','Steady'];
-        else if (ticker === 'DIA') res.chain = ['IndexValue','IndexValue','IndexValue'];
-        else res.chain = ['Steady','Steady','Steady'];
-
-        if (scenario === 'optimistic') res.mods = {pe:1.15, margin:1.05, growth:1.1};
-        else if (scenario === 'pessimistic') res.mods = {pe:0.9, margin:0.95, growth:0.9};
-        return res;
-      }
-
-      if (selected === 'Expansion'){
-        if (scenario === 'optimistic'){
-          res.chain = ['Expansion','Expansion','Momentum'];
-          res.mods = {pe:1.2, margin:1.05, growth:1.15};
-        } else if (scenario === 'pessimistic'){
-          res.mods = {pe:0.9, margin:0.95, growth:0.85};
-        }
-        return res;
-      }
-
-      if (scenario === 'optimistic') res.mods = {pe:1.1, margin:1.03, growth:1.1};
-      else if (scenario === 'pessimistic') res.mods = {pe:0.9, margin:0.97, growth:0.85};
-      else if (scenario === 'monte_carlo') res.mods = {pe:1, margin:1, growth:1};
-
-      return res;
-    }
-
-    function getScenarioHorizon(baseN, scenario){
-      const minN = 3;
-      let maxN = 30;
-      if (state.maxNFromFile != null) maxN = Math.min(maxN, state.maxNFromFile);
-
-      if (scenario === 'optimistic') return clamp(Math.round(baseN * 1.2), minN, maxN);
-      if (scenario === 'pessimistic') return clamp(Math.round(baseN * 0.8), minN, maxN);
-      return clamp(baseN, minN, maxN);
-    }
-
-    function getTerminalParams(baseTheme, scenario, ticker){
-      if (['SPY','QQQ','DIA'].includes(ticker)){
-        let adj = 1.0;
-        if (scenario === 'optimistic') adj = 1.05;
-        if (scenario === 'pessimistic') adj = 0.95;
-        return { themeKey: baseTheme, adj };
-      }
-
-      const themeIndex = THEME_ORDER.indexOf(baseTheme);
-      let targetThemeKey = baseTheme;
-
-      if (scenario === 'base' || scenario === 'monte_carlo') return { themeKey: baseTheme, adj: 1.0 };
-
-      if (scenario === 'pessimistic'){
-        if (baseTheme === 'Fallen' || baseTheme === 'DeepValue') return { themeKey: baseTheme, adj: 0.9 };
-        if (themeIndex !== -1 && themeIndex < THEME_ORDER.length - 1) targetThemeKey = THEME_ORDER[themeIndex + 1];
-        return { themeKey: targetThemeKey, adj: 1.0 };
-      }
-
-      if (scenario === 'optimistic'){
-        if (baseTheme === 'Rocket') return { themeKey: 'Rocket', adj: 1.15 };
-        if (baseTheme === 'Expansion') return { themeKey: 'Expansion', adj: 1.15 };
-        if (baseTheme === 'Fallen') return { themeKey: 'Steady', adj: 1.0 };
-        if (themeIndex > 0) targetThemeKey = THEME_ORDER[themeIndex - 1];
-        return { themeKey: targetThemeKey, adj: 1.0 };
-      }
-
-      return { themeKey: baseTheme, adj: 1.0 };
-    }
-
-    // --------------------------
-    // IRR
-    // --------------------------
-    function calculateIRR(values){
-      const hasPos = values.some(v => v > 0);
-      const hasNeg = values.some(v => v < 0);
-      if (!hasPos || !hasNeg) return null;
-
-      let rate = 0.1;
-      for (let i=0; i<CONFIG.IRR_MAX_ITER; i++){
-        let npv = 0, d_npv = 0;
-        const onePlus = 1 + rate;
-        if (onePlus <= 0) break;
-
-        for (let j=0; j<values.length; j++){
-          const div = Math.pow(onePlus, j);
-          npv += values[j] / div;
-          d_npv -= (j * values[j]) / (div * onePlus);
-        }
-
-        if (Math.abs(npv) < CONFIG.IRR_TOL) return rate;
-        if (d_npv === 0 || !isFinite(d_npv)) break;
-
-        const newRate = rate - (npv / d_npv);
-        if (!isFinite(newRate)) break;
-        if (Math.abs(newRate - rate) < CONFIG.IRR_TOL) return newRate;
-
-        rate = newRate;
-        if (rate < CONFIG.IRR_MIN_RATE || rate > CONFIG.IRR_MAX_RATE) break;
-      }
-      return null;
-    }
-
-    // --------------------------
-    // REVERSE DCF (IMPLIED)
-    // --------------------------
-    function calculateImpliedGrowth(inputs, userTheme, scenario){
-      let low = -50, high = 100, implied = 0;
-      const target = inputs.startPrice;
-
-      for (let i=0; i<40; i++){
-        const mid = (low + high) / 2;
-        const temp = { ...inputs, startGrowth: mid };
-        const res = runDCFModel(temp, userTheme, scenario);
-
-        if (res.fv > target) high = mid;
-        else low = mid;
-
-        implied = mid;
-      }
-      return implied;
-    }
-
-    function calculateImpliedDiscountRate(inputs, userTheme, scenario){
-      let low = 0.01, high = 0.40, implied = 0.08;
-      const target = inputs.startPrice;
-      if (target <= 0) return 0;
-
-      for (let i=0; i<40; i++){
-        const mid = (low + high) / 2;
-        const temp = { ...inputs, discountRate: mid };
-        const res = runDCFModel(temp, userTheme, scenario);
-
-        // Higher r -> Lower FV
-        if (res.fv > target) low = mid;
-        else high = mid;
-
-        implied = mid;
-      }
-      return implied;
-    }
-
-    // --------------------------
-    // MARKET ERP FROM SPY
-    // --------------------------
-    function updateMarketERPSpy(){
-      const spy = GLOBAL_DB['SPY'];
-      if (!spy) return;
-
-      const rf = state.rf ?? 0.0414;
-
-      const inputs = {
-        startPrice: spy.price,
-        startRPS: spy.rps,
-        startGrowth: spy.growth,
-        forecastMargin: spy.margin,
-        discountRate: 0.08,
-        startPayout: spy.payout,
-        N: 15
-      };
-
-      const saved = state.currentTicker;
-      state.currentTicker = 'SPY'; // enable index exceptions
-      const dr = calculateImpliedDiscountRate(inputs, 'Steady', 'base');
-      state.currentTicker = saved;
-
-      if (dr && isFinite(dr)) state.erpSpy = dr - rf;
-      updateHeaderRatesUI();
-    }
-
-    function applyAutoDRForTicker(ticker){
-      if (!state.autoDR) return;
-
-      const rf = state.rf ?? 0.0414;
-      const beta = getBetaForTicker(ticker);
-      const erp = getERPUsed();
-
-      const dr = rf + beta * erp;
-
-      const inp = document.getElementById('inp-dr');
-      if (!inp) return;
-
-      state._suppressAutoToggle = true;
-      inp.value = (dr * 100).toFixed(2);
-      state._suppressAutoToggle = false;
-
-      updateDRFormulaUI(ticker);
-    }
-
-    // --------------------------
-    // CORE MODEL
-    // --------------------------
-    function runDCFModel(inputs, userThemeKey, scenario, overrides = {}){
-      const { startPrice, startRPS, startGrowth, forecastMargin, discountRate, startPayout, N } = inputs;
-
-      const params = getCalcParams(userThemeKey, scenario, state.currentTicker);
-      const mods = params.mods;
-      const chainKeys = params.chain;
-
-      const t1 = METRICS[chainKeys[0]];
-      const t3 = METRICS[chainKeys[2]];
-
-      const WEIGHTS = { optimistic:{mid:0.3}, base:{mid:0.5}, pessimistic:{mid:0.8}, monte_carlo:{mid:0.5} };
-      const w = WEIGHTS[scenario] || WEIGHTS.base;
-
-      const blend = (curr, target, weight) => curr*(1-weight) + target*weight;
-      const sCurve = (t) => t*t*(3-2*t);
-
-      const rawG = (m) => m.growth * mods.growth;
-      const rawM = (m) => m.margin * mods.margin;
-
-      const isRocket = (userThemeKey === 'Rocket');
-      const t3Effective = isRocket ? METRICS['Expansion'] : t3;
-
-      const TERM_BLEND = 0.7;
-      let termMargin = blend(forecastMargin, t3Effective.margin, TERM_BLEND);
-      if (overrides.termMargin !== undefined) termMargin = overrides.termMargin;
-
-      const targetTerm = {
-        g: blend(startGrowth, t3Effective.growth, TERM_BLEND),
-        m: termMargin,
-        p: isRocket ? t3Effective.payout : blend(startPayout, t3Effective.payout, TERM_BLEND)
-      };
-      const targetMid = {
-        g: blend(startGrowth, rawG(t1), w.mid),
-        m: blend(forecastMargin, rawM(t1), w.mid),
-        p: isRocket ? METRICS['Expansion'].payout : blend(startPayout, t1.payout, w.mid)
-      };
-
-      const phaseTargets = {
-        current: { g:startGrowth, m:forecastMargin, p:startPayout },
-        mid: targetMid,
-        term: targetTerm
-      };
-
-      const modelYears = Math.max(1, N - CONFIG.ANALYST_YEARS);
-      let p1 = Math.floor(modelYears/3);
-      let p2 = Math.floor(modelYears/3);
-      if (['Rocket','Expansion'].includes(params.themeKey)){
-        const maxHigh = 5;
-        const total = p1+p2;
-        if (total > maxHigh){
-          const scale = maxHigh/total;
-          p1 = Math.max(1, Math.round(p1*scale));
-          p2 = Math.max(1, Math.round(p2*scale));
-        }
-      } else {
-        p1 = Math.min(5, p1);
-        p2 = Math.min(5, p2);
-      }
-      const p3 = modelYears - p1 - p2;
-
-      // Terminal logic
-      const tickerData = GLOBAL_DB[state.currentTicker] || {};
-      const termParams = getTerminalParams(userThemeKey, scenario, state.currentTicker);
-      const termTheme = METRICS[termParams.themeKey];
-      const scenarioAdj = termParams.adj;
-
-      let currentInputPS = 0;
-      if (startRPS > 0 && startPrice > 0) currentInputPS = startPrice / startRPS;
-
-      // Premium vs base theme PS
-      let psPremium = 1.0;
-      const baseMetricPS = METRICS[userThemeKey].ps;
-      if (currentInputPS > 0 && baseMetricPS > 0) psPremium = currentInputPS / baseMetricPS;
-      else if (tickerData.ps && baseMetricPS) psPremium = tickerData.ps / baseMetricPS;
-      else if (tickerData.pe && METRICS[userThemeKey].pe) psPremium = tickerData.pe / METRICS[userThemeKey].pe;
-      psPremium = clamp(psPremium, 0.5, 2.0);
-
-      let reversionFactor = 0.25;
-      if (scenario === 'optimistic') reversionFactor = 0.75;
-      if (scenario === 'pessimistic') reversionFactor = 0.0;
-      if (psPremium < 1.0 && scenario === 'base') reversionFactor = 0.5;
-      const finalPremium = 1 + (psPremium - 1) * reversionFactor;
-
-      // Build cashflows
-      let rps = startRPS;
-      let pvDiv = 0;
-      let irrStream = [-startPrice];
-      let tableData = [];
-      const eps0 = startRPS * (forecastMargin/100);
-      tableData.push({ year:0, phase:'Start', rps:startRPS, margin:forecastMargin, eps:eps0, flow:-startPrice, payout:startPayout, isExit:false });
-
-      const y_p1_end = CONFIG.ANALYST_YEARS + p1;
-      const y_p2_end = y_p1_end + p2;
-
-      let df = 1.0;
-
-      for (let i=1; i<=N; i++){
-        let g, m, pay, phaseLabel = "Analyst";
-
-        // INDEX LOGIC: years 1..3 = Analyst, then degrade
-        if (['SPY','QQQ','DIA'].includes(state.currentTicker)){
-          if (i <= 3){
-            g = startGrowth; m = forecastMargin; pay = startPayout;
-            phaseLabel = "Analyst";
-          } else {
-            phaseLabel = "Index Flow";
-            const t = i - 3;
-            const progressG = Math.min(1, (t - 1) / 10);
-            const progressP = Math.min(1, (t - 1) / 15);
-            const termG = 6.5, termP = 40.0;
-            g = startGrowth - (startGrowth - termG) * progressG;
-            m = forecastMargin;
-            pay = startPayout - (startPayout - termP) * progressP;
-            phaseTargets.term = { g:termG, m:forecastMargin, p:termP };
-          }
-        } else {
-          if (i <= CONFIG.ANALYST_YEARS){
-            g = startGrowth; m = forecastMargin; pay = startPayout;
-            phaseLabel = "Analyst";
-          } else {
-            if (i <= y_p1_end){
-              phaseLabel = "Phase 1";
-              const rawProg = clamp((i - CONFIG.ANALYST_YEARS - 1) / Math.max(1, p1), 0, 1);
-              const prog = sCurve(rawProg);
-              g = startGrowth + (targetMid.g - startGrowth) * prog;
-              m = forecastMargin + (targetMid.m - forecastMargin) * prog;
-              pay = startPayout + (targetMid.p - startPayout) * prog;
-            } else if (i <= y_p2_end){
-              phaseLabel = "Phase 2";
-              const rawProg = clamp((i - y_p1_end - 1) / Math.max(1, p2), 0, 1);
-              const prog = sCurve(rawProg);
-              g = targetMid.g + (targetTerm.g - targetMid.g) * prog;
-              m = targetMid.m + (targetTerm.m - targetMid.m) * prog;
-              pay = targetMid.p + (targetTerm.p - targetMid.p) * prog;
-            } else {
-              phaseLabel = "Phase 3";
-              g = targetTerm.g; m = targetTerm.m; pay = targetTerm.p;
-            }
-          }
-        }
-
-        pay = clamp(pay, 0, 100);
-
-        rps = rps * (1 + g/100);
-        const eps = rps * (m/100);
-        const div = (eps > 0 ? eps : 0) * (pay/100);
-
-        let effR = discountRate;
-        if (i > TAIL_PENALTY.START_YEAR) effR += TAIL_PENALTY.EXTRA_DR;
-
-        df *= (1 + effR);
-        pvDiv += div / df;
-        irrStream.push(div);
-
-        tableData.push({ year:i, phase:phaseLabel, rps, margin:m, eps, flow:div, payout:pay, isExit:false });
-      }
-
-      // Terminal multiples
-      const last = tableData[tableData.length - 1];
-      const safeMarginDec = Math.max((last.margin || 1)/100, 0.01);
-
-      let finalPS = termTheme.ps * finalPremium * scenarioAdj;
-      if (scenario === 'base' && currentInputPS > 0) finalPS = Math.min(finalPS, currentInputPS);
-      finalPS = clamp(finalPS, 0.5, 50);
-
-      let finalPE = finalPS / safeMarginDec;
-
-      let maxPE = 80;
-      if (scenario === 'base') maxPE = 30;
-      if (scenario === 'pessimistic') maxPE = 20;
-      if (scenario === 'monte_carlo'){
-        const baseThemePE = termTheme.pe || 25;
-        maxPE = Math.min(60, baseThemePE * 1.5);
-      }
-
-      if (finalPE > maxPE){
-        finalPE = maxPE;
-        finalPS = finalPE * safeMarginDec;
-      }
-
-      finalPS = Math.max(finalPS, 0.5);
-      finalPE = Math.max(finalPE, 5);
-
-      if (overrides.finalPE !== undefined){
-        finalPE = overrides.finalPE;
-        finalPS = finalPE * safeMarginDec;
-      }
-
-      const exitPricePE = last.eps * finalPE;
-      const exitPricePS = last.rps * finalPS;
-      const exitPrice = (exitPricePE + exitPricePS) / 2;
-
-      // Add exit to last IRR cashflow (only if EPS positive)
-      if (last.eps > 0){
-        irrStream[irrStream.length - 1] += exitPrice;
-        tableData.push({
-          year: N,
-          phase: 'EXIT',
-          rps: last.rps,
-          margin: last.margin,
-          eps: last.eps,
-          flow: exitPrice,
-          payout: null,
-          isExit: true,
-          finalPE,
-          finalPS
-        });
-      }
-
-      const pvExit = exitPrice / df;
-      const fv = pvDiv + pvExit;
-      const irr = calculateIRR(irrStream);
-
-      // Buyer's relay
-      let relay = [];
-      if (scenario !== 'monte_carlo'){
-        let startPE = currentInputPS > 0 ? (currentInputPS / safeMarginDec) : (tickerData.pe || 25);
-        startPE = clamp(startPE, 5, 200);
-
-        for (let t=0; t<=N; t++){
-          const prog = t / N;
-          const impliedPE = startPE + (finalPE - startPE) * prog;
-
-          const row = tableData.find(r => r.year === t && !r.isExit) || null;
-          const eps_t = row ? row.eps : 0;
-          const rps_t = row ? row.rps : 0;
-
-          let price_t = eps_t * impliedPE;
-          if (t === 0) price_t = startPrice;
-
-          let yieldYoY = null;
-          if (t > 0 && relay.length > 0){
-            const prevPrice = relay[t-1].price;
-            const div_t = row ? row.flow : 0;
-            if (prevPrice > 0) yieldYoY = (price_t + div_t) / prevPrice - 1;
-          }
-
-          relay.push({
-            year: t,
-            price: price_t,
-            pe: impliedPE,
-            ps: (rps_t > 0) ? price_t / rps_t : 0,
-            yieldYoY
-          });
-        }
-      }
-
-      const upside = (startPrice > 0 && isFinite(fv)) ? ((fv - startPrice)/startPrice)*100 : null;
-      const spread = (irr != null && isFinite(discountRate)) ? (irr - discountRate) * 100 : null;
-
-      return { tableData, irrStream, irr, discountRate, fv, pvDiv, pvExit, upside, spread, finalPE, finalPS, phaseTargets, inputs, relay, themeLCX: METRICS[params.themeKey].lcX };
-    }
-
-    // --------------------------
-    // ROIC SANITY RENDER
-    // --------------------------
-    function findYearRow(tableData, y){
-      return tableData.find(r => r.year === y && !r.isExit);
-    }
-
-    function renderROICSanity(result, inputs){
-      const row = GLOBAL_DB[state.currentTicker] || {};
-      const roic = (row.roic != null && isFinite(row.roic)) ? row.roic : null;
-      const r = (inputs.discountRate != null && isFinite(inputs.discountRate)) ? inputs.discountRate : null;
-
-      const badgeEl = document.getElementById('roic-badge');
-      const msgEl = document.getElementById('roic-msg');
-      if (!badgeEl || !msgEl) return;
-
-      if (roic == null){
-        safeSetText('roic-val', '--');
-        safeSetText('roic-spread', '--');
-        safeSetText('roic-geps', '--');
-        safeSetText('roic-pmax', '--');
-        setBadge(badgeEl, 'na', 'ROIC: n/a');
-        msgEl.className = "mt-2 text-[10px] leading-snug text-slate-500";
-        msgEl.innerText = "Добавь ROIC в Excel, чтобы включить проверку реалистичности рост ↔ выплаты.";
-        return;
-      }
-
-      const eps0 = findYearRow(result.tableData, 0)?.eps;
-      const eps3 = findYearRow(result.tableData, 3)?.eps;
-      const gEPS = cagr(eps0, eps3, 3); // 2025-27 window
-
-      const payout = isFinite(inputs.startPayout) ? (inputs.startPayout/100) : null;
-
-      let payoutMax = (gEPS != null) ? (1 - (gEPS / roic)) : null;
-      if (payoutMax != null && isFinite(payoutMax)) payoutMax = clamp(payoutMax, -1, 1);
-
-      const roicReq = (gEPS != null && payout != null && payout < 1) ? (gEPS / (1 - payout)) : null;
-      const spread = (r != null) ? (roic - r) : null;
-
-      safeSetText('roic-val', fmtPctDec(roic));
-      safeSetText('roic-spread', spread!=null ? fmtPP(spread) : '--');
-      safeSetText('roic-geps', gEPS!=null ? fmtPctDec(gEPS) : '--');
-      safeSetText('roic-pmax', payoutMax!=null ? fmtPctDec(Math.max(0, payoutMax)) : '--');
-
-      const tol = 0.05; // 5 p.p.
-
-      let level = 'green';
-      let text = '';
-
-      // ROIC vs r gate
-      if (spread != null && isFinite(spread)){
-        if (spread <= -0.01) level = 'red';
-        else if (spread < 0.02) level = (level==='red' ? 'red' : 'yellow');
-      }
-
-      if (payoutMax == null || gEPS == null || payout == null){
-        level = (level==='red' ? 'red' : 'na');
-        text = "Недостаточно данных для проверки.";
-      } else if (payoutMax < 0){
-        level = 'red';
-        text = `Невозможно при данном ROIC. gEPS(2025–27)=${fmtPctDec(gEPS)} при ROIC=${fmtPctDec(roic)} не оплачивается даже при payout=0. Проверь рост/маржу/ROIC.`;
-      } else if (payout > payoutMax + tol){
-        level = 'red';
-        text = `Неустойчиво. При gEPS(2025–27)=${fmtPctDec(gEPS)} и ROIC=${fmtPctDec(roic)} устойчивый payout ≤ ${fmtPctDec(payoutMax)}. Сейчас ${(payout*100).toFixed(1)}%. Снизь payout или рост, либо обоснуй рост ROIC/маржи.`;
-      } else if (Math.abs(payout - payoutMax) <= tol){
-        level = (level==='red' ? 'red' : 'yellow');
-        text = `На грани устойчивости. Устойчивый payout ≈ ${fmtPctDec(payoutMax)}, сейчас ${(payout*100).toFixed(1)}%. Любая просадка ROIC/маржи быстро “съест” запас.`;
-      } else {
-        text = `Устойчиво. Устойчивый payout ≈ до ${fmtPctDec(payoutMax)}, сейчас ${(payout*100).toFixed(1)}% — есть запас.`;
-      }
-
-      // ROIC required hint
-      if (roicReq != null && isFinite(roicReq) && roic != null){
-        const diff = roicReq - roic;
-        const ratio = roicReq / roic;
-        if (diff > 0.08 || ratio > 1.5){
-          level = 'red';
-          text += ` Требуемый ROIC≈${fmtPctDec(roicReq)} — существенно выше текущего.`;
-        } else if (diff > 0.02 || ratio > 1.1){
-          level = (level==='red' ? 'red' : 'yellow');
-          text += ` Требуемый ROIC≈${fmtPctDec(roicReq)} — выше текущего.`;
-        }
-      }
-
-      // Add spread sentence
-      if (spread != null && isFinite(spread)){
-        if (spread <= -0.01) text += ` ROIC − r=${fmtPP(spread)}: рост разрушает стоимость при текущей ставке.`;
-        else if (spread < 0.02) text += ` ROIC − r=${fmtPP(spread)}: очень тонкий запас (высокая чувствительность к r).`;
-        else text += ` ROIC − r=${fmtPP(spread)}: рост создаёт стоимость.`;
-      }
-
-      if (level === 'green') setBadge(badgeEl, 'green', '✅ OK');
-      else if (level === 'yellow') setBadge(badgeEl, 'yellow', '⚠️ На грани');
-      else if (level === 'red') setBadge(badgeEl, 'red', '⛔ Red flag');
-      else setBadge(badgeEl, 'na', 'n/a');
-
-      msgEl.className =
-        "mt-2 text-[10px] leading-snug " +
-        (level==='green' ? "text-green-700" : level==='yellow' ? "text-yellow-800" : level==='red' ? "text-red-700" : "text-slate-500");
-      msgEl.innerText = text;
-    }
-
-    // --------------------------
-    // RENDERING
-    // --------------------------
-    function renderSummary(result, inputs){
-      const { irr, discountRate, fv, upside, finalPE, finalPS, relay } = result;
-
-      const irrEl = document.getElementById('res-irr');
-      if (irr == null){
-        irrEl.innerText = 'n/a';
-        irrEl.className = "text-5xl font-bold tracking-tight text-slate-300";
-      } else {
-        irrEl.innerText = (irr*100).toFixed(1) + '%';
-        irrEl.className = (irr >= discountRate) ? "text-5xl font-bold tracking-tight text-green-400" : "text-5xl font-bold tracking-tight text-yellow-400";
-      }
-
-      const upEl = document.getElementById('res-upside');
-      upEl.innerText = upside == null ? 'n/a' : (upside > 0 ? '+' : '') + upside.toFixed(1) + '%';
-      upEl.className = (upside != null && upside < 0) ? "text-xl font-bold text-red-400" : "text-xl font-bold text-green-400";
-
-      safeSetText('res-fv', formatCurrency(fv));
-      safeSetText('res-exit-pe', isFinite(finalPE) ? finalPE.toFixed(1) + 'x' : '--x');
-      safeSetText('res-exit-ps', isFinite(finalPS) ? finalPS.toFixed(1) + 'x' : '--x');
-
-      // Relay table
-      const relayBody = document.getElementById('relay-table-body');
-      if (relayBody && relay && relay.length > 0){
-        relayBody.innerHTML = '';
-        relay.forEach(r => {
-          const tr = document.createElement('tr');
-          const peTxt = r.pe > 0 ? r.pe.toFixed(1) + 'x' : '-';
-          const psTxt = r.ps > 0 ? r.ps.toFixed(1) + 'x' : '-';
-          const yTxt = r.yieldYoY !== null ? (r.yieldYoY*100).toFixed(1) + '%' : '-';
-
-          let yCls = "text-slate-500";
-          if (r.yieldYoY !== null){
-            if (r.yieldYoY > 0.15) yCls = "text-green-600 font-bold";
-            else if (r.yieldYoY < 0) yCls = "text-red-500 font-bold";
-          }
-
-          tr.innerHTML = `
-            <td class="py-1 px-2 border-b border-indigo-50 font-medium text-indigo-900">Y${r.year}</td>
-            <td class="py-1 text-right border-b border-indigo-50 font-bold text-indigo-700">${formatCurrency(r.price)}</td>
-            <td class="py-1 text-right border-b border-indigo-50 text-slate-500 font-mono">${peTxt}</td>
-            <td class="py-1 text-right border-b border-indigo-50 text-slate-500 font-mono">${psTxt}</td>
-            <td class="py-1 text-right pr-2 border-b border-indigo-50 font-mono ${yCls}">${yTxt}</td>
-          `;
-          relayBody.appendChild(tr);
-        });
-      } else if (relayBody){
-        relayBody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-slate-400">Нет данных для сценария Monte Carlo</td></tr>';
-      }
-
-      // Reverse DCF widgets
-      const theme = document.getElementById('theme-selector').value;
-      const scenario = state.scenario;
-
-      if (scenario !== 'monte_carlo'){
-        const impliedG = calculateImpliedGrowth(inputs, theme, scenario);
-        const impliedDR = calculateImpliedDiscountRate(inputs, theme, scenario);
-
-        safeSetText('rev-growth', impliedG.toFixed(1) + '%');
-        safeSetText('rev-user-g', inputs.startGrowth.toFixed(1) + '%');
-
-        safeSetText('rev-dr', (impliedDR*100).toFixed(1) + '%');
-        safeSetText('rev-user-dr', (inputs.discountRate*100).toFixed(1) + '%');
-
-        const beta = getBetaForTicker(state.currentTicker);
-        const erp = getERPUsed();
-
-        safeSetText('rev-rf', fmtPctDec(state.rf));
-        safeSetText('rev-erp', fmtPctDec(erp));
-        safeSetText('rev-beta', beta.toFixed(2));
-
-        const growthDiff = impliedG - inputs.startGrowth;
-        const verdictEl = document.getElementById('rev-verdict');
-        if (growthDiff > 5){
-          verdictEl.innerText = "Рынок перегрет";
-          verdictEl.className = "text-sm font-bold text-red-400";
-        } else if (growthDiff < -2){
-          verdictEl.innerText = "Маржа безопасности";
-          verdictEl.className = "text-sm font-bold text-green-400";
-        } else {
-          verdictEl.innerText = "Справедливая оценка";
-          verdictEl.className = "text-sm font-bold text-yellow-400";
-        }
-      }
-    }
-
-    function renderTable(data){
-      const tbody = document.getElementById('table-body');
-      if (!tbody) return;
-      tbody.innerHTML = '';
-
-      data.forEach(row => {
-        const tr = document.createElement('tr');
-
-        if (row.isExit){
-          tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
-          tr.innerHTML = `
-            <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
-            <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
-            <td class="px-4 py-2 text-right">
-              <div class="text-[10px] text-slate-500">RPS x P/S</div>
-              <div class="font-mono text-indigo-800">${formatCurrency(row.rps)} x ${row.finalPS.toFixed(1)}x</div>
-            </td>
-            <td class="px-4 py-2 text-right">
-              <div class="text-[10px] text-slate-500">EPS x P/E</div>
-              <div class="font-mono text-indigo-800">${formatCurrency(row.eps)} x ${row.finalPE.toFixed(1)}x</div>
-            </td>
-            <td class="px-4 py-2 text-right text-indigo-400" colspan="2">=</td>
-            <td class="px-4 py-2 text-right font-bold text-indigo-700 text-lg">${formatCurrency(row.flow)}</td>
-          `;
-        } else {
-          if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
-          else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
-
-          const payoutTxt = row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
-
-          tr.innerHTML = `
-            <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
-            <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
-            <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : formatCurrency(row.rps)}</td>
-            <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : formatPercent(row.margin)}</td>
-            <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : formatCurrency(row.eps)}</td>
-            <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
-            <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${formatCurrency(row.flow)}</td>
-          `;
-        }
-
-        tbody.appendChild(tr);
-      });
-    }
-
-    function renderSensitivity(baseResult, baseInputs, theme, scenario){
-      const gridEl = document.getElementById('sens-grid');
-      const mcStatsEl = document.getElementById('mc-stats');
-      const sensTitle = document.getElementById('sens-title');
-      const sensSubtitle = document.getElementById('sens-subtitle');
-
-      const renderScenarioLabel = (label, upside) => {
-        const el = document.getElementById(`up-${label}`);
-        if (!el) return;
-        if (label === 'monte_carlo') return;
-        const sign = upside > 0 ? '+' : '';
-        el.innerText = `${sign}${upside.toFixed(1)}%`;
-        el.className = upside > 0 ? "text-[10px] text-center mt-1 font-bold text-green-500" : "text-[10px] text-center mt-1 font-bold text-red-400";
-      };
-
-      ['pessimistic','base','optimistic'].forEach(s => {
-        const res = runDCFModel(baseInputs, theme, s);
-        const up = baseInputs.startPrice > 0 ? ((res.fv - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
-        renderScenarioLabel(s, up);
-      });
-
-      // MC
-      if (scenario === 'monte_carlo'){
-        gridEl.classList.add('hidden');
-        mcStatsEl.classList.remove('hidden');
-        mcStatsEl.classList.add('grid');
-        sensTitle.innerText = "Анализ Рисков (Monte Carlo)";
-        sensSubtitle.innerText = "Распределение справедливой цены (1000 симуляций)";
-
-        const sims = 1000;
-        const results = [];
-
-        for (let i=0; i<sims; i++){
-          const sim = { ...baseInputs };
-          sim.startGrowth = randomNormal(baseInputs.startGrowth, 2.0);
-          sim.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5);
-          sim.discountRate = randomNormal(baseInputs.discountRate, 0.005);
-
-          const res = runDCFModel(sim, theme, 'monte_carlo');
-          if (isFinite(res.fv)) results.push(res.fv);
-        }
-
-        results.sort((a,b)=>a-b);
-        const p10 = results[Math.floor(sims*0.1)];
-        const p50 = results[Math.floor(sims*0.5)];
-        const p90 = results[Math.floor(sims*0.9)];
-
-        const upP10 = baseInputs.startPrice > 0 ? ((p10 - baseInputs.startPrice)/baseInputs.startPrice)*100 : 0;
-        const upP50 = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice)/baseInputs.startPrice)*100 : 0;
-        const upP90 = baseInputs.startPrice > 0 ? ((p90 - baseInputs.startPrice)/baseInputs.startPrice)*100 : 0;
-
-        const formatUp = (val) => (val>0?'+':'') + val.toFixed(1) + '%';
-        const updateMC = (idPrice, idUp, val, upVal) => {
-          safeSetText(idPrice, formatCurrency(val));
-          const upEl = document.getElementById(idUp);
-          if (upEl){
-            upEl.innerText = formatUp(upVal);
-            upEl.className = upVal >= 0 ? "text-[10px] font-bold text-green-600" : "text-[10px] font-bold text-red-500";
-          }
-        };
-
-        updateMC('mc-p10','mc-p10-up',p10,upP10);
-        updateMC('mc-p50','mc-p50-up',p50,upP50);
-        updateMC('mc-p90','mc-p90-up',p90,upP90);
-
-        const mcLabel = document.getElementById('up-monte_carlo');
-        if (mcLabel){
-          mcLabel.innerText = formatUp(upP50);
-          mcLabel.className = upP50 > 0 ? "text-[10px] text-center mt-1 font-bold text-green-500" : "text-[10px] text-center mt-1 font-bold text-red-400";
-        }
-
-        return;
-      } else {
-        // quick MC p50 label for button
-        const sims = 100;
-        const results = [];
-        for (let i=0; i<sims; i++){
-          const sim = { ...baseInputs };
-          sim.startGrowth = randomNormal(baseInputs.startGrowth, 2.0);
-          sim.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5);
-          sim.discountRate = randomNormal(baseInputs.discountRate, 0.005);
-          const res = runDCFModel(sim, theme, 'monte_carlo');
-          if (isFinite(res.fv)) results.push(res.fv);
-        }
-        results.sort((a,b)=>a-b);
-        const p50 = results[Math.floor(sims*0.5)];
-        const p50Upside = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice)/baseInputs.startPrice)*100 : 0;
-        const mcLabel = document.getElementById('up-monte_carlo');
-        if (mcLabel){
-          const sign = p50Upside>0?'+':'';
-          mcLabel.innerText = `${sign}${p50Upside.toFixed(1)}%`;
-          mcLabel.className = p50Upside > 0 ? "text-[10px] text-center mt-1 font-bold text-green-500" : "text-[10px] text-center mt-1 font-bold text-red-400";
-        }
-      }
-
-      // STANDARD GRID
-      gridEl.classList.remove('hidden');
-      mcStatsEl.classList.add('hidden');
-      mcStatsEl.classList.remove('grid');
-
-      sensTitle.innerText = "Матрица Справедливой Цены (PV Today)";
-      sensSubtitle.innerText = "Влияние ставки (r) и мультипликатора (P/E)";
-
-      gridEl.innerHTML = '';
-      const rStep = 0.01, peStep = 1.0;
-      const currentPE = baseResult.finalPE;
-      const currentR = baseResult.discountRate;
-
-      const peLabels = [
-        { label:'r \\ PE', class:'text-slate-500' },
-        { label:'-1.0x', val: currentPE - peStep },
-        { label:'Base',  val: currentPE },
-        { label:'+1.0x', val: currentPE + peStep }
-      ];
-
-      peLabels.forEach((h, idx) => {
-        const d = document.createElement('div');
-        d.className = "text-[10px] font-bold pb-1 " + (idx===0 ? h.class : (idx===2 ? "text-blue-600" : "text-slate-500"));
-        d.innerText = h.label;
-        gridEl.appendChild(d);
-      });
-
-      const rRows = [
-        { label:'+1.0%', val: currentR + rStep },
-        { label:'Base',  val: currentR },
-        { label:'-1.0%', val: currentR - rStep }
-      ];
-
-      rRows.forEach(row => {
-        const hdr = document.createElement('div');
-        hdr.className = "text-[10px] font-bold my-auto text-left pl-1 " + (row.label==='Base' ? "text-blue-600" : "text-slate-500");
-        hdr.innerText = row.label;
-        gridEl.appendChild(hdr);
-
-        peLabels.slice(1).forEach(col => {
-          const simInputs = { ...baseInputs, discountRate: row.val };
-          const simRes = runDCFModel(simInputs, theme, scenario, { finalPE: col.val });
-          const price = baseInputs.startPrice;
-          const fv = simRes.fv;
-          const upside = price > 0 ? ((fv - price)/price)*100 : 0;
-
-          const isBase = (row.label==='Base' && col.label==='Base');
-          let bg = "bg-slate-50", tx="text-slate-600";
-          if (isBase){
-            bg="bg-blue-600 shadow-lg z-10 ring-2 ring-blue-300";
-            tx="text-white";
-          } else {
-            if (upside > 5) { bg="bg-green-100"; tx="text-green-800"; }
-            else if (upside < -5) { bg="bg-red-50"; tx="text-red-800"; }
-          }
-
-          const cell = document.createElement('div');
-          const sign = upside > 0 ? '+' : '';
-          cell.className = `p-1 rounded-sm cursor-default flex flex-col items-center justify-center ${bg} ${tx} text-[10px] leading-tight`;
-          cell.innerHTML = `
-            <div class="font-bold">$${fv.toLocaleString('en-US',{maximumFractionDigits:0})}</div>
-            <div class="text-[9px] opacity-80">${sign}${upside.toFixed(0)}%</div>
-          `;
-          gridEl.appendChild(cell);
-        });
-      });
-    }
-
-    function renderLifecycleVisuals(result, themeKey, scenario){
-      const t = result.phaseTargets;
-      const tbody = document.getElementById('lifecycle-table-body');
-      if (tbody){
-        tbody.innerHTML = `
-          <tr class="border-b border-slate-50">
-            <td class="py-2 pl-2 text-slate-600">CAGR Рост</td>
-            <td class="py-2 text-right text-slate-500">${t.current.g.toFixed(1)}%</td>
-            <td class="py-2 text-right text-blue-600 font-bold bg-blue-50/50 rounded">${t.mid.g.toFixed(1)}%</td>
-            <td class="py-2 text-right text-slate-400">${t.term.g.toFixed(1)}%</td>
-          </tr>
-          <tr class="border-b border-slate-50">
-            <td class="py-2 pl-2 text-slate-600">Маржа</td>
-            <td class="py-2 text-right text-slate-500">${t.current.m.toFixed(1)}%</td>
-            <td class="py-2 text-right text-blue-600 font-bold bg-blue-50/50 rounded">${t.mid.m.toFixed(1)}%</td>
-            <td class="py-2 text-right text-slate-400">${t.term.m.toFixed(1)}%</td>
-          </tr>
-          <tr>
-            <td class="py-2 pl-2 text-slate-600">Payout</td>
-            <td class="py-2 text-right text-slate-500">${t.current.p.toFixed(0)}%</td>
-            <td class="py-2 text-right text-blue-600 font-bold bg-blue-50/50 rounded">${t.mid.p.toFixed(0)}%</td>
-            <td class="py-2 text-right text-slate-400">${t.term.p.toFixed(0)}%</td>
-          </tr>
-        `;
-      }
-
-      // Lifecycle chart
-      if (!state.charts.lc) return;
-      const chart = state.charts.lc;
-
-      const baseX = METRICS[themeKey].lcX;
-      const pX = Math.min(100, baseX + 15);
-      const oX = Math.max(0, baseX - 15);
-      const bell = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2)));
-
-      const etfData = [
-        { x: METRICS['IndexTech'].lcX,  y: bell(METRICS['IndexTech'].lcX),  label:'QQQ' },
-        { x: METRICS['Steady'].lcX,    y: bell(METRICS['Steady'].lcX),    label:'SPY' },
-        { x: METRICS['IndexValue'].lcX,y: bell(METRICS['IndexValue'].lcX),label:'DIA' }
-      ];
-
-      const themeData = THEME_ORDER.map(k => ({ x: METRICS[k].lcX, y: bell(METRICS[k].lcX) }));
-
-      chart.data.datasets[1].data = themeData;
-      chart.data.datasets[2].data = etfData;
-
-      let activeX = baseX;
-      let color = '#3b82f6';
-      if (scenario === 'optimistic'){ activeX = oX; color = '#22c55e'; }
-      if (scenario === 'pessimistic'){ activeX = pX; color = '#ef4444'; }
-
-      chart.data.datasets[3].data = [{ x: activeX, y: bell(activeX) }];
-      chart.data.datasets[3].backgroundColor = color;
-
-      chart.update();
-    }
-
-    // --------------------------
-    // CHART INIT
-    // --------------------------
-    function initChart(){
-      const ctxLc = document.getElementById('lifecycleChart');
-      if (!ctxLc) return;
-
-      const curveData = [];
-      for (let i=0; i<=100; i+=2){
-        const y = 100 * Math.exp(-Math.pow(i - 40, 2) / (2 * Math.pow(25, 2)));
-        curveData.push({x:i, y});
-      }
-
-      state.charts.lc = new Chart(ctxLc.getContext('2d'), {
-        type: 'line',
-        data: {
-          datasets: [
-            {
-              label:'Lifecycle',
-              data: curveData,
-              borderColor:'#cbd5e1',
-              borderWidth:2,
-              pointRadius:0,
-              fill:true,
-              backgroundColor:'rgba(241, 245, 249, 0.5)',
-              tension:0.4
-            },
-            { label:'Themes',  data:[], backgroundColor:'#94a3b8', pointRadius:3, type:'scatter' },
-            { label:'ETFs',    data:[], backgroundColor:'#6366f1', pointRadius:6, pointStyle:'rectRot', type:'scatter' },
-            { label:'Company', data:[], backgroundColor:'#3b82f6', pointRadius:10, type:'scatter' }
-          ]
-        },
-        options: {
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins: {
-            legend: { display:false },
-            tooltip: {
-              enabled:true,
-              callbacks: {
-                label: function(ctx){
-                  const raw = ctx.raw;
-                  if (raw && raw.label) return raw.label;
-                  return ctx.dataset.label;
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    let successCount = 0;
+                    for (const sheetName of workbook.SheetNames) {
+                        const worksheet = workbook.Sheets[sheetName];
+                        const rawData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                        const res = extractDataFromSheet(rawData);
+                        if (res && res.count > 0) {
+                            GLOBAL_DB = { ...GLOBAL_DB, ...res.db };
+                            successCount += res.count;
+                        }
+                    }
+                    if (successCount > 0) {
+                        document.getElementById('db-status').innerText = `Excel (${successCount} шт.)`;
+                        document.getElementById('db-status').className = "text-[10px] bg-green-500 px-2 py-0.5 rounded text-white";
+                        
+                        // Modified logic here: Prioritize SPY
+                        if (GLOBAL_DB['SPY']) {
+                             document.getElementById('inp-ticker').value = 'SPY';
+                             loadTicker();
+                        } else {
+                            // Fallback to alert if no SPY (unlikely with DEMO_DB)
+                            alert(`Успешно загружено ${successCount} компаний! Введите тикер в поиск.`);
+                        }
+                    } else {
+                        errEl.innerText = "Не удалось найти данные. Проверьте заголовки (Ticker, Price...).";
+                        errEl.classList.remove('hidden');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    errEl.innerText = "Ошибка чтения файла.";
+                    errEl.classList.remove('hidden');
                 }
-              }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function normalizeTheme(raw) {
+            if (!raw) return null;
+            const str = String(raw).toLowerCase().trim();
+            const keys = Object.keys(METRICS);
+            const exact = keys.find(k => k.toLowerCase() === str);
+            if (exact) return exact;
+            
+            if (str.includes('nasdaq') || str.includes('qqq') || str.includes('tech index')) return 'IndexTech';
+            if (str.includes('dow') || str.includes('dia') || str.includes('value index')) return 'IndexValue';
+            if (str.includes('rocket') || str.includes('start')) return 'Rocket';
+            if (str.includes('expansion') || str.includes('nvda')) return 'Expansion';
+            if (str.includes('momentum') || str.includes('quality')) return 'Momentum';
+            if (str.includes('steady') || str.includes('compounder')) return 'Steady';
+            if (str.includes('dividend') || str.includes('yield')) return 'Dividend';
+            if (str.includes('deep') || str.includes('value')) return 'DeepValue';
+            if (str.includes('fallen')) return 'Fallen';
+            return null;
+        }
+
+        function extractDataFromSheet(rows) {
+            const newDB = {};
+            let count = 0;
+            if (!rows || rows.length === 0) return { count: 0, db: {} };
+
+            let headerRowIndex = -1;
+            let colMap = {}; 
+            
+            // RELAXED MATCHING LOGIC
+            const keyMap = {
+                ticker: ['ticker', 'symbol', 'code', 'тикер'],
+                price: ['price', 'close', 'last', 'цена'],
+                rps: ['rps', 'revenue', 'sales', 'выручка'], 
+                growth: ['growth', 'cagr', 'рост'], 
+                margin: ['margin', 'net margin', 'margin %', 'маржа'],
+                wacc: ['wacc', 'cost of capital', 'ставка', 'ks'], 
+                payout: ['payout', 'dividen', 'дивиден'], 
+                theme: ['theme', 'profile', 'strategy', 'тема'],
+                n: ['n term', 'n_term', 'years', 'term', 'srok', 'срок', 'horizon', 'n term'],
+                pe: ['pe', 'p/e', 'forward pe', 'pe_curr', 'p/e ratio'],
+                ps: ['ps', 'p/s', 'forward ps', 'ps_curr', 'p/s ratio']
+            };
+
+            for (let i = 0; i < Math.min(rows.length, 20); i++) {
+                const row = rows[i];
+                let tempMap = {};
+                row.forEach((cell, cellIdx) => {
+                    if (!cell) return;
+                    // FIX: Remove ALL dots to handle P.E., W.A.C.C. etc.
+                    const val = String(cell).toLowerCase().replace(/\./g, '').trim();
+                    
+                    for (const [key, candidates] of Object.entries(keyMap)) {
+                        const isMatch = candidates.some(c => {
+                            // Relaxed check: allows "WACC (%)" to match "wacc"
+                            // If candidate is short (<=3), require strict word match or exact match
+                            if (c.length <= 3) {
+                                return val === c || val.startsWith(c + ' ') || val.includes(' ' + c) || val.includes('/' + c); 
+                            }
+                            return val.includes(c);
+                        });
+                        if (isMatch && tempMap[key] === undefined) tempMap[key] = cellIdx;
+                    }
+                });
+                if (tempMap.ticker !== undefined && tempMap.price !== undefined) {
+                    headerRowIndex = i; colMap = tempMap; break;
+                }
             }
-          },
-          scales: {
-            x: { type:'linear', display:true, min:0, max:100, title:{display:true, text:'Стадии: Старт -> Рост -> Зрелость -> Спад'} },
-            y: { display:false, min:0, max:110 }
-          }
+
+            if (headerRowIndex === -1) return { count: 0, db: {} };
+
+            for (let i = headerRowIndex + 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length === 0) continue;
+                const getValue = (key) => {
+                    const idx = colMap[key];
+                    return idx !== undefined ? row[idx] : null;
+                };
+                const rawTicker = getValue('ticker');
+                const rawPrice = getValue('price');
+
+                if (rawTicker && rawPrice) {
+                    const ticker = String(rawTicker).trim().toUpperCase();
+                    const safeFloat = (val, def) => {
+                        const parsed = parseFloat(val);
+                        return isNaN(parsed) ? def : parsed;
+                    };
+                    const nVal = safeFloat(getValue('n'), null);
+                    
+                    newDB[ticker] = {
+                        name: ticker + ' (Excel)',
+                        price: safeFloat(rawPrice, 0),
+                        rps: safeFloat(getValue('rps'), 10),
+                        growth: safeFloat(getValue('growth'), 5),
+                        margin: safeFloat(getValue('margin'), 10),
+                        wacc: safeFloat(getValue('wacc'), 8), 
+                        payout: safeFloat(getValue('payout'), 0),
+                        profile: normalizeTheme(getValue('theme')),
+                        n_term: nVal,
+                        pe: safeFloat(getValue('pe'), null),
+                        ps: safeFloat(getValue('ps'), null)
+                    };
+                    count++;
+                }
+            }
+            return { count, db: newDB };
         }
-      });
-    }
 
-    // --------------------------
-    // MONTE CARLO RNG
-    // --------------------------
-    function randomNormal(mean, stdDev){
-      let u=0, v=0;
-      while(u===0) u = Math.random();
-      while(v===0) v = Math.random();
-      const z = Math.sqrt(-2.0*Math.log(u)) * Math.cos(2.0*Math.PI*v);
-      return mean + z*stdDev;
-    }
-
-    // --------------------------
-    // INPUTS / CALCULATE
-    // --------------------------
-    function readInputsFromDOM(){
-      const getVal = (id) => parseFloat(document.getElementById(id).value);
-      const drPct = getVal('inp-dr');
-      return {
-        startPrice: getVal('inp-price') || 0,
-        startRPS: getVal('inp-rps') || 0,
-        startGrowth: getVal('inp-growth') || 0,
-        forecastMargin: getVal('inp-forecast-margin') || 0,
-        discountRate: (isNaN(drPct) ? 8 : drPct) / 100,
-        startPayout: getVal('inp-payout') || 0,
-        N: parseInt(document.getElementById('slider-years').value) || 15
-      };
-    }
-
-    function calculate(){
-      const theme = document.getElementById('theme-selector').value;
-
-      // If Auto DR is ON, ensure inp-dr reflects formula before running model
-      if (state.autoDR){
-        applyAutoDRForTicker(state.currentTicker || (document.getElementById('inp-ticker').value || '').trim().toUpperCase());
-      }
-
-      const inputs = readInputsFromDOM();
-
-      const manualPEInput = document.getElementById('inp-exit-pe');
-      const manualMarginInput = document.getElementById('inp-term-margin');
-
-      let overrides = {};
-
-      if (manualPEInput){
-        const v = parseFloat(manualPEInput.value);
-        if (!isNaN(v) && v > 0) overrides.finalPE = v;
-      }
-      if (manualMarginInput){
-        const v = parseFloat(manualMarginInput.value);
-        if (!isNaN(v)) overrides.termMargin = v;
-      }
-
-      const result = runDCFModel(inputs, theme, state.scenario, overrides);
-
-      renderSummary(result, inputs);
-      renderTable(result.tableData);
-      renderSensitivity(result, inputs, theme, state.scenario);
-      renderLifecycleVisuals(result, theme, state.scenario);
-      renderROICSanity(result, inputs);
-
-      // placeholders
-      if (manualPEInput && !overrides.finalPE && result.finalPE) manualPEInput.placeholder = result.finalPE.toFixed(1);
-      if (manualMarginInput && !overrides.termMargin) manualMarginInput.placeholder = result.phaseTargets.term.m.toFixed(1);
-    }
-
-    // --------------------------
-    // TICKER LOAD / RESET
-    // --------------------------
-    function loadTicker(){
-      const inputEl = document.getElementById('inp-ticker');
-      const errorEl = document.getElementById('ticker-error');
-      const panelEl = document.getElementById('inputs-panel');
-      const rawTicker = inputEl.value.trim().toUpperCase();
-
-      errorEl.classList.add('hidden');
-
-      if (!GLOBAL_DB[rawTicker]){
-        errorEl.classList.remove('hidden');
-        errorEl.innerText = `Тикер "${rawTicker}" не найден.`;
-        document.getElementById('btn-reset').classList.add('hidden');
-        return;
-      }
-
-      const data = GLOBAL_DB[rawTicker];
-      state.currentTicker = rawTicker;
-
-      // Fill inputs
-      document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
-      document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
-      document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
-      document.getElementById('inp-forecast-margin').value = data.margin ? Number(data.margin).toFixed(2) : '';
-      document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
-
-      // Discount rate initial (will be overridden by Auto if ON)
-      const drField = document.getElementById('inp-dr');
-      const drPct = (data.dr != null && isFinite(data.dr)) ? data.dr : 8.0;
-      drField.value = Number(drPct).toFixed(2);
-
-      // P/E P/S badges
-      const peBadge = document.getElementById('disp-current-pe');
-      const psBadge = document.getElementById('disp-current-ps');
-      const calcPE = (data.price / (data.rps * data.margin/100)).toFixed(1);
-      const calcPS = (data.price / data.rps).toFixed(2);
-
-      peBadge.innerText = data.pe ? `PE: ${data.pe.toFixed(1)}x` : `PE: ${calcPE}x*`;
-      psBadge.innerText = data.ps ? `PS: ${data.ps.toFixed(2)}x` : `PS: ${calcPS}x*`;
-
-      peBadge.className = data.pe ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
-      psBadge.className = data.ps ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
-
-      // Profile
-      const profile = data.profile || detectProfile(data);
-      document.getElementById('theme-selector').value = profile;
-
-      safeSetText('company-name', data.name || rawTicker);
-
-      // Beta/ROIC badges
-      const beta = (data.beta != null && isFinite(data.beta)) ? data.beta : 1.0;
-      safeSetText('company-beta', `β: ${beta.toFixed(2)}`);
-
-      const roic = (data.roic != null && isFinite(data.roic)) ? data.roic : null;
-      safeSetText('company-roic', roic != null ? `ROIC: ${(roic*100).toFixed(1)}%` : 'ROIC: --');
-
-      // Horizon
-      const slider = document.getElementById('slider-years');
-      const valInput = document.getElementById('val-years');
-
-      if (data.n_term && data.n_term > 0){
-        const nTerm = Math.min(Math.max(data.n_term, 3), 35);
-        slider.value = nTerm;
-        valInput.value = nTerm;
-        state.userSetYears = true;
-        state.maxNFromFile = nTerm;
-      } else {
-        slider.value = 15;
-        valInput.value = 15;
-        state.userSetYears = false;
-        state.maxNFromFile = null;
-      }
-
-      // reset manual overrides
-      document.getElementById('inp-exit-pe').value = '';
-      document.getElementById('inp-term-margin').value = '';
-
-      // Update market ERP (in case SPY row was updated) and apply auto DR
-      updateHeaderRatesUI();
-      updateMarketERPSpy();
-      applyAutoDRForTicker(rawTicker);
-
-      // Flash
-      panelEl.classList.remove('flash-update');
-      void panelEl.offsetWidth;
-      panelEl.classList.add('flash-update');
-
-      state.scenario = 'base';
-      setScenario('base');
-      document.getElementById('btn-reset').classList.remove('hidden');
-    }
-
-    function resetToDefaults(){
-      if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
-
-      const data = GLOBAL_DB[state.currentTicker];
-
-      document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
-      document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
-      document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
-      document.getElementById('inp-forecast-margin').value = data.margin ? Number(data.margin).toFixed(2) : '';
-      document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
-
-      // reset horizon
-      const slider = document.getElementById('slider-years');
-      const valInput = document.getElementById('val-years');
-
-      if (data.n_term && data.n_term > 0){
-        const nTerm = Math.min(Math.max(data.n_term, 3), 35);
-        slider.value = nTerm;
-        valInput.value = nTerm;
-        state.userSetYears = true;
-        state.maxNFromFile = nTerm;
-      } else {
-        slider.value = 15;
-        valInput.value = 15;
-        state.userSetYears = false;
-        state.maxNFromFile = null;
-      }
-
-      // reset theme
-      const profile = data.profile || detectProfile(data);
-      document.getElementById('theme-selector').value = profile;
-
-      // reset manual overrides
-      document.getElementById('inp-exit-pe').value = '';
-      document.getElementById('inp-term-margin').value = '';
-
-      // apply auto DR again
-      applyAutoDRForTicker(state.currentTicker);
-
-      const panel = document.getElementById('inputs-panel');
-      const scpanel = document.getElementById('scenario-panel');
-      panel.classList.remove('flash-update');
-      if (scpanel) scpanel.classList.remove('flash-update');
-      void panel.offsetWidth;
-      panel.classList.add('flash-update');
-      if (scpanel) scpanel.classList.add('flash-update');
-
-      state.scenario = 'base';
-      setScenario('base');
-    }
-
-    // --------------------------
-    // SCENARIO
-    // --------------------------
-    function setScenario(s){
-      const themeKey = document.getElementById('theme-selector').value;
-      state.scenario = s;
-
-      ['pessimistic','base','optimistic','monte_carlo'].forEach(id => {
-        const btn = document.getElementById('btn-' + id);
-        if (!btn) return;
-
-        const isAct = (id === s);
-        btn.className = "flex-1 py-3 text-xs border rounded-lg transition-all font-medium text-slate-600 hover:bg-slate-50";
-
-        if (isAct){
-          if (id === 'pessimistic') btn.className = "flex-1 py-3 text-xs bg-red-100 text-red-800 border-red-300 rounded-lg shadow-inner font-bold border";
-          else if (id === 'optimistic') btn.className = "flex-1 py-3 text-xs bg-green-100 text-green-800 border-green-300 rounded-lg shadow-inner font-bold border";
-          else if (id === 'monte_carlo') btn.className = "flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-inner font-bold border transition-all hover:bg-purple-700";
-          else btn.className = "flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md font-bold";
-        } else {
-          if (id === 'monte_carlo') btn.className = "flex-1 py-3 text-xs text-purple-600 border-purple-200 border rounded-lg hover:bg-purple-50 transition-all font-medium";
+        // --- AUTO-PROFILE ---
+        function detectProfile(data) {
+            const g = data.growth;
+            const m = data.margin;
+            const p = data.payout;
+            if (data.name && data.name.includes('Nasdaq')) return 'IndexTech';
+            if (data.name && data.name.includes('Dow')) return 'IndexValue';
+            
+            if (g > 30) return 'Rocket';
+            if (g > 15 && m > 20) return 'Expansion';
+            if (g > 10 && m > 15 && p > 10) return 'Momentum';
+            if (p > 60) return 'Dividend';
+            if (g < 5 && p > 0) return 'DeepValue';
+            if (g > 15 && m < 10) return 'Fallen';
+            return 'Steady'; 
         }
-      });
 
-      const params = getCalcParams(themeKey, s, state.currentTicker);
-      const slider = document.getElementById('slider-years');
-      const valInput = document.getElementById('val-years');
+        // --- SCENARIO HELPER ---
+        function getTerminalParams(baseTheme, scenario, ticker) {
+            if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
+                let adj = 1.0;
+                if (scenario === 'optimistic') adj = 1.05;
+                if (scenario === 'pessimistic') adj = 0.95;
+                return { themeKey: baseTheme, adj: adj };
+            }
 
-      if (slider && !state.userSetYears){
-        const baseN = METRICS[params.themeKey].N || 12;
-        const newN = getScenarioHorizon(baseN, s);
-        slider.value = newN;
-        if (valInput) valInput.value = newN;
-      }
+            const themeIndex = THEME_ORDER.indexOf(baseTheme);
+            let targetThemeKey = baseTheme;
+            let scenarioAdj = 1.0;
 
-      calculate();
-    }
+            if (scenario === 'base' || scenario === 'monte_carlo') {
+                return { themeKey: baseTheme, adj: 1.0 };
+            }
 
-    // --------------------------
-    // INIT
-    // --------------------------
-    window.addEventListener('load', () => {
-      initChart();
+            if (scenario === 'pessimistic') {
+                if (baseTheme === 'Fallen' || baseTheme === 'DeepValue') {
+                    return { themeKey: baseTheme, adj: 0.9 }; 
+                }
+                if (themeIndex !== -1 && themeIndex < THEME_ORDER.length - 1) {
+                    targetThemeKey = THEME_ORDER[themeIndex + 1];
+                }
+                return { themeKey: targetThemeKey, adj: 1.0 };
+            }
 
-      updateHeaderRatesUI();
-      updateMarketERPSpy();
+            if (scenario === 'optimistic') {
+                if (baseTheme === 'Rocket') {
+                    return { themeKey: 'Rocket', adj: 1.15 }; 
+                }
+                if (baseTheme === 'Expansion') {
+                     return { themeKey: 'Expansion', adj: 1.15 };
+                }
+                if (baseTheme === 'Fallen') {
+                    return { themeKey: 'Steady', adj: 1.0 }; 
+                }
+                if (themeIndex > 0) {
+                    targetThemeKey = THEME_ORDER[themeIndex - 1];
+                }
+                return { themeKey: targetThemeKey, adj: 1.0 };
+            }
+            
+            return { themeKey: baseTheme, adj: 1.0 };
+        }
 
-      const slider = document.getElementById('slider-years');
-      const valInput = document.getElementById('val-years');
+        function loadTicker() {
+            const inputEl = document.getElementById('inp-ticker');
+            const errorEl = document.getElementById('ticker-error');
+            const panelEl = document.getElementById('inputs-panel');
+            const rawTicker = inputEl.value.trim().toUpperCase();
 
-      if (slider && valInput){
-        slider.addEventListener('input', () => {
-          valInput.value = slider.value;
-          state.userSetYears = true;
-          calculate();
+            errorEl.classList.add('hidden');
+            
+            if (GLOBAL_DB[rawTicker]) {
+                const data = GLOBAL_DB[rawTicker];
+                state.currentTicker = rawTicker; 
+                
+                // FIX: Format numbers to 2 decimal places for display inputs
+                document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
+                document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
+                document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
+                document.getElementById('inp-forecast-margin').value = data.margin ? Number(data.margin).toFixed(2) : '';
+                document.getElementById('inp-wacc').value = data.wacc ? Number(data.wacc).toFixed(2) : '';
+                document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
+                
+                const peBadge = document.getElementById('disp-current-pe');
+                const psBadge = document.getElementById('disp-current-ps');
+                
+                const calcPE = (data.price / (data.rps * data.margin/100)).toFixed(1);
+                const calcPS = (data.price / data.rps).toFixed(2);
+                
+                peBadge.innerText = data.pe ? `PE: ${data.pe.toFixed(1)}x` : `PE: ${calcPE}x*`;
+                psBadge.innerText = data.ps ? `PS: ${data.ps.toFixed(2)}x` : `PS: ${calcPS}x*`;
+                
+                peBadge.className = data.pe ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
+                psBadge.className = data.ps ? "text-[9px] font-bold text-blue-600 bg-blue-50 px-1 rounded" : "text-[9px] text-slate-400 bg-slate-100 px-1 rounded";
+
+                const profile = data.profile || detectProfile(data);
+                document.getElementById('theme-selector').value = profile;
+                safeSetText('company-name', data.name || rawTicker);
+
+                // SYNC SLIDER AND INPUT
+                const slider = document.getElementById('slider-years');
+                const valInput = document.getElementById('val-years');
+                
+                if (data.n_term && data.n_term > 0) {
+                    const nTerm = Math.min(Math.max(data.n_term, 3), 35); 
+                    slider.value = nTerm; // Just value, not max
+                    valInput.value = nTerm;
+                    state.userSetYears = true;
+                    state.maxNFromFile = nTerm;
+                } else {
+                    slider.value = 15;
+                    valInput.value = 15;
+                    state.userSetYears = false; 
+                    state.maxNFromFile = null;
+                }
+                
+                // Clear manual flags on new ticker load
+                state.isPEManual = false;
+                document.getElementById('inp-exit-pe').value = '';
+                document.getElementById('inp-term-margin').value = '';
+
+                // Add explicit refresh of calculations immediately after load
+                state.scenario = 'base'; 
+                
+                // Clear any existing flash class first
+                panelEl.classList.remove('flash-update');
+                void panelEl.offsetWidth; // Trigger reflow
+                panelEl.classList.add('flash-update');
+                
+                setScenario('base'); 
+                document.getElementById('btn-reset').classList.remove('hidden');
+            } else {
+                errorEl.classList.remove('hidden');
+                errorEl.innerText = `Тикер "${rawTicker}" не найден.`;
+                document.getElementById('btn-reset').classList.add('hidden');
+            }
+        }
+        
+        function resetToDefaults() {
+            if (!state.currentTicker || !GLOBAL_DB[state.currentTicker]) return;
+            const data = GLOBAL_DB[state.currentTicker];
+            
+            // FIX: Format numbers to 2 decimal places for reset
+            document.getElementById('inp-price').value = data.price ? Number(data.price).toFixed(2) : '';
+            document.getElementById('inp-rps').value = data.rps ? Number(data.rps).toFixed(2) : '';
+            document.getElementById('inp-growth').value = data.growth ? Number(data.growth).toFixed(2) : '';
+            document.getElementById('inp-forecast-margin').value = data.margin ? Number(data.margin).toFixed(2) : '';
+            document.getElementById('inp-wacc').value = data.wacc ? Number(data.wacc).toFixed(2) : '';
+            document.getElementById('inp-payout').value = data.payout ? Number(data.payout).toFixed(2) : '';
+            
+            const profile = data.profile || detectProfile(data);
+            document.getElementById('theme-selector').value = profile;
+            
+            const slider = document.getElementById('slider-years');
+            const valInput = document.getElementById('val-years');
+            const peInput = document.getElementById('inp-exit-pe');
+            const marginInput = document.getElementById('inp-term-margin');
+            
+            if (data.n_term && data.n_term > 0) {
+                const nTerm = Math.min(Math.max(data.n_term, 3), 35);
+                slider.max = 35; // FIX: Max always 35
+                valInput.max = 35;
+                slider.value = nTerm;
+                valInput.value = nTerm;
+                state.userSetYears = true;
+                state.maxNFromFile = nTerm;
+            } else {
+                slider.max = 35;
+                valInput.max = 35;
+                state.userSetYears = false; 
+                state.maxNFromFile = null;
+                slider.value = 15;
+                valInput.value = 15;
+            }
+            
+            // Reset Manuals
+            state.isPEManual = false;
+            peInput.value = '';
+            marginInput.value = '';
+            
+            const panel = document.getElementById('inputs-panel');
+            const scpanel = document.getElementById('scenario-panel');
+            panel.classList.remove('flash-update');
+            if(scpanel) scpanel.classList.remove('flash-update');
+            void panel.offsetWidth; 
+            panel.classList.add('flash-update');
+            if(scpanel) scpanel.classList.add('flash-update');
+            
+            state.scenario = 'base';
+            setScenario('base');
+        }
+
+        // --- HELPERS ---
+        function safeSetText(id, text) { const el = document.getElementById(id); if (el) el.innerText = text; }
+        function formatCurrency(n) { return n == null || !isFinite(n) ? '$---' : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }); }
+        function formatPercent(n) { return n == null || !isFinite(n) ? '--%' : n.toFixed(1) + '%'; }
+        function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+        // --- SCENARIO HORIZON HELPER ---
+        function getScenarioHorizon(baseN, scenario) {
+            const minN = 3;
+            let maxN = 30; 
+
+            if (state.maxNFromFile != null) {
+                maxN = Math.min(maxN, state.maxNFromFile);
+            }
+
+            if (scenario === 'optimistic') {
+                return clamp(Math.round(baseN * 1.2), minN, maxN);
+            }
+            if (scenario === 'pessimistic') {
+                return clamp(Math.round(baseN * 0.8), minN, maxN);
+            }
+            return clamp(baseN, minN, maxN);
+        }
+
+        // --- CALC PARAMS ---
+        function getCalcParams(selected, scenario, ticker) {
+            let res = { themeKey: selected, mods: { pe: 1, margin: 1, growth: 1 }, chain: BASE_CHAINS[selected] || ['Steady', 'Steady', 'Steady'] };
+            
+            // --- INDEX EXCEPTIONS ---
+            if (['SPY', 'QQQ', 'DIA'].includes(ticker)) {
+                if (ticker === 'QQQ') res.chain = ['IndexTech', 'IndexTech', 'Steady'];
+                else if (ticker === 'DIA') res.chain = ['IndexValue', 'IndexValue', 'IndexValue'];
+                else res.chain = ['Steady', 'Steady', 'Steady'];
+                
+                if (scenario === 'optimistic') res.mods = { pe: 1.15, margin: 1.05, growth: 1.1 }; 
+                else if (scenario === 'pessimistic') res.mods = { pe: 0.9, margin: 0.95, growth: 0.9 };
+                return res;
+            }
+
+            // --- EXPANSION EXCEPTION ---
+            if (selected === 'Expansion') {
+                if (scenario === 'optimistic') {
+                    res.chain = ['Expansion', 'Expansion', 'Momentum']; 
+                    res.mods = { pe: 1.2, margin: 1.05, growth: 1.15 };
+                } else if (scenario === 'pessimistic') {
+                    res.mods = { pe: 0.9, margin: 0.95, growth: 0.85 };
+                } 
+                return res;
+            }
+
+            // --- GENERAL MODIFIERS ---
+            if (scenario === 'optimistic') {
+                res.mods = { pe: 1.1, margin: 1.03, growth: 1.1 };
+            } else if (scenario === 'pessimistic') {
+                res.mods = { pe: 0.9, margin: 0.97, growth: 0.85 };
+            }
+            
+            // For Monte Carlo, we use base mods but will jitter them in the loop
+            if (scenario === 'monte_carlo') {
+                res.mods = { pe: 1, margin: 1, growth: 1 };
+            }
+
+            return res;
+        }
+
+        // --- IRR ---
+        function calculateIRR(values) {
+            const hasPos = values.some(v => v > 0);
+            const hasNeg = values.some(v => v < 0);
+            if (!hasPos || !hasNeg) return null; 
+            const maxIter = CONFIG.IRR_MAX_ITER, tol = CONFIG.IRR_TOL;
+            let rate = 0.1;
+
+            for (let i = 0; i < maxIter; i++) {
+                let npv = 0, d_npv = 0;
+                const onePlus = 1 + rate;
+                if (onePlus <= 0) break;
+                for (let j = 0; j < values.length; j++) {
+                    const div = Math.pow(onePlus, j);
+                    npv += values[j] / div;
+                    d_npv -= (j * values[j]) / (div * onePlus);
+                }
+                if (Math.abs(npv) < tol) return rate;
+                if (d_npv === 0 || !isFinite(d_npv)) break;
+                const newRate = rate - (npv / d_npv);
+                if (!isFinite(newRate)) break;
+                if (Math.abs(newRate - rate) < tol) return newRate;
+                rate = newRate;
+                if (rate < CONFIG.IRR_MIN_RATE || rate > CONFIG.IRR_MAX_RATE) break;
+            }
+            return null; 
+        }
+
+        // --- REVERSE DCF (IMPLIED GROWTH / WACC) ---
+        function calculateImpliedGrowth(inputs, userTheme, scenario) {
+            let low = -50;
+            let high = 100;
+            let impliedG = 0;
+            const target = inputs.startPrice;
+            
+            for(let i=0; i<40; i++) {
+                const mid = (low + high) / 2;
+                const tempInputs = { ...inputs, startGrowth: mid };
+                const res = runDCFModel(tempInputs, userTheme, scenario);
+                
+                if (res.fv > target) {
+                    high = mid;
+                } else {
+                    low = mid;
+                }
+                impliedG = mid;
+            }
+            return impliedG;
+        }
+
+        function calculateImpliedWACC(inputs, userTheme, scenario) {
+            let low = 0.01; // 1%
+            let high = 0.40; // 40%
+            let impliedW = 0.08;
+            const target = inputs.startPrice;
+            
+            if (target <= 0) return 0;
+
+            for(let i=0; i<40; i++) {
+                const mid = (low + high) / 2;
+                const tempInputs = { ...inputs, wacc: mid }; 
+                const res = runDCFModel(tempInputs, userTheme, scenario);
+                
+                // Higher WACC -> Lower FV
+                if (res.fv > target) {
+                    low = mid; // Need higher WACC to lower FV
+                } else {
+                    high = mid;
+                }
+                impliedW = mid;
+            }
+            return impliedW;
+        }
+
+        // --- CORE MODEL ---
+        function runDCFModel(inputs, userThemeKey, scenario, overrides = {}) {
+            const { startPrice, startRPS, startGrowth, forecastMargin, wacc, startPayout, N } = inputs;
+            const params = getCalcParams(userThemeKey, scenario, state.currentTicker);
+            const mods = params.mods;
+            const chainKeys = params.chain;
+
+            const t1 = METRICS[chainKeys[0]];
+            const t2 = METRICS[chainKeys[1]];
+            const t3 = METRICS[chainKeys[2]];
+
+            const WEIGHTS = { optimistic: { mid: 0.3 }, base: { mid: 0.5 }, pessimistic:{ mid: 0.8 }, monte_carlo: { mid: 0.5 } };
+            const w = WEIGHTS[scenario] || WEIGHTS.base;
+            const blend = (curr, target, weight) => curr * (1 - weight) + target * weight;
+
+            // S-Curve Helper for smooth transitions
+            const sCurve = (t) => t * t * (3 - 2 * t);
+
+            const rawG = (m) => m.growth * mods.growth;
+            const rawM = (m) => m.margin * mods.margin;
+            
+            const isRocket = (userThemeKey === 'Rocket');
+            const t3Effective = isRocket ? METRICS['Expansion'] : t3;
+            const TERM_BLEND = 0.7; 
+            const rawGBase = (m) => m.growth; 
+            const rawMBase = (m) => m.margin;
+
+            // HANDLE MARGIN OVERRIDE
+            let termMargin = blend(forecastMargin, rawMBase(t3Effective), TERM_BLEND);
+            if (overrides.termMargin !== undefined) {
+                termMargin = overrides.termMargin;
+            }
+
+            const targetTerm = {
+                g: blend(startGrowth, rawGBase(t3Effective), TERM_BLEND),
+                m: termMargin,
+                p: isRocket ? t3Effective.payout : blend(startPayout, t3Effective.payout, TERM_BLEND)
+            };
+            const targetMid = {
+                g: blend(startGrowth, rawG(t1), w.mid),
+                m: blend(forecastMargin, rawM(t1), w.mid),
+                p: (isRocket ? METRICS['Expansion'].payout : blend(startPayout, t1.payout, w.mid))
+            };
+
+            const phaseTargets = { current: { g: startGrowth, m: forecastMargin, p: startPayout }, mid: targetMid, term: targetTerm };
+
+            const modelYears = Math.max(1, N - CONFIG.ANALYST_YEARS);
+            let p1_dur = Math.floor(modelYears / 3);
+            let p2_dur = Math.floor(modelYears / 3);
+            
+            const highGrowthProfiles = ['Rocket', 'Expansion'];
+            if (highGrowthProfiles.includes(params.themeKey)) {
+                const maxHigh = 5; 
+                const total12 = p1_dur + p2_dur;
+                if (total12 > maxHigh) {
+                    const scale = maxHigh / total12;
+                    p1_dur = Math.max(1, Math.round(p1_dur * scale));
+                    p2_dur = Math.max(1, Math.round(p2_dur * scale));
+                }
+            } else {
+                 p1_dur = Math.min(5, p1_dur);
+                 p2_dur = Math.min(5, p2_dur);
+            }
+            let p3_dur = modelYears - p1_dur - p2_dur;
+
+            // --- TERMINAL P/S & P/E LOGIC ---
+            const tickerData = GLOBAL_DB[state.currentTicker] || {};
+            const termParams = getTerminalParams(userThemeKey, scenario, state.currentTicker);
+            const termTheme = METRICS[termParams.themeKey];
+            const scenarioAdj = termParams.adj;
+
+            // 3. Calculate Premium
+            let psPremium = 1.0;
+            const baseMetricPS = METRICS[userThemeKey].ps; 
+            
+            let currentInputPS = 0;
+            if (startRPS > 0 && startPrice > 0) {
+                currentInputPS = startPrice / startRPS;
+            }
+
+            if (currentInputPS > 0 && baseMetricPS > 0) {
+                psPremium = currentInputPS / baseMetricPS;
+            } else if (tickerData.ps && baseMetricPS) {
+                psPremium = tickerData.ps / baseMetricPS;
+            } else if (tickerData.pe && METRICS[userThemeKey].pe) {
+                psPremium = tickerData.pe / METRICS[userThemeKey].pe; 
+            }
+            psPremium = clamp(psPremium, 0.5, 2.0);
+            
+            // NEW: Mean Reversion for Premium based on Scenario
+            let reversionFactor = 0.25; // Base: Strong reversion (only 25% of premium survives 10y)
+            if (scenario === 'optimistic') reversionFactor = 0.75; 
+            if (scenario === 'pessimistic') reversionFactor = 0.0; 
+            if (psPremium < 1.0 && scenario === 'base') reversionFactor = 0.5;
+
+            const finalPremium = 1 + (psPremium - 1) * reversionFactor;
+
+            // Run loop first
+            let rps = startRPS, pvDiv = 0, irrStream = [-startPrice], tableData = [];
+            const eps0 = startRPS * (forecastMargin / 100);
+            
+            tableData.push({ year: 0, phase: 'Start', rps: startRPS, margin: forecastMargin, eps: eps0, flow: -startPrice, payout: startPayout, isExit: false });
+
+            const y_p1_end = CONFIG.ANALYST_YEARS + p1_dur;
+            const y_p2_end = y_p1_end + p2_dur;
+
+            // --- DISCOUNTING SETUP with TAIL PENALTY ---
+            let df = 1.0;
+
+            for (let i = 1; i <= N; i++) {
+                let g, m, pay, phaseLabel = "Analyst";
+
+                if (['SPY', 'QQQ', 'DIA'].includes(state.currentTicker)) {
+                     phaseLabel = "Index Flow";
+                     const progressG = Math.min(1, (i - 1) / 10); 
+                     const progressP = Math.min(1, (i - 1) / 15); 
+                     const termG = 6.5; const termP = 40.0; 
+                     g = startGrowth - (startGrowth - termG) * progressG;
+                     m = forecastMargin; 
+                     pay = startPayout - (startPayout - termP) * progressP;
+                     phaseTargets.term = { g: termG, m: forecastMargin, p: termP };
+                } else {
+                    if (i <= CONFIG.ANALYST_YEARS) {
+                        g = startGrowth; m = forecastMargin; pay = startPayout;
+                    } else {
+                        let progress = 0;
+                        if (i <= y_p1_end) {
+                            phaseLabel = "Phase 1";
+                            // S-Curve application
+                            const rawProg = clamp((i - CONFIG.ANALYST_YEARS - 1) / Math.max(1, p1_dur), 0, 1);
+                            progress = sCurve(rawProg);
+                            g = startGrowth + (targetMid.g - startGrowth) * progress;
+                            m = forecastMargin + (targetMid.m - forecastMargin) * progress;
+                            pay = startPayout + (targetMid.p - startPayout) * progress;
+                        } else if (i <= y_p2_end) {
+                            phaseLabel = "Phase 2";
+                            // S-Curve application
+                            const rawProg = clamp((i - y_p1_end - 1) / Math.max(1, p2_dur), 0, 1);
+                            progress = sCurve(rawProg);
+                            g = targetMid.g + (targetTerm.g - targetMid.g) * progress;
+                            m = targetMid.m + (targetTerm.m - targetMid.m) * progress;
+                            pay = targetMid.p + (targetTerm.p - targetMid.p) * progress;
+                        } else {
+                            phaseLabel = "Phase 3";
+                            g = targetTerm.g;
+                            m = targetTerm.m;
+                            pay = targetTerm.p;
+                        }
+                    }
+                }
+                pay = clamp(pay, 0, 100);
+                rps = rps * (1 + g / 100);
+                let eps = rps * (m / 100);
+                let div = (eps > 0 ? eps : 0) * (pay / 100);
+                let effectiveRate = wacc;
+                if (i > TAIL_PENALTY.START_YEAR) effectiveRate += TAIL_PENALTY.EXTRA_DR;
+                df *= (1 + effectiveRate);
+                pvDiv += div / df;
+                irrStream.push(div);
+                tableData.push({ year: i, phase: phaseLabel, rps: rps, margin: m, eps: eps, flow: div, payout: pay, isExit: false });
+            }
+
+            // Calculate Final P/S and P/E
+            const lastData = tableData[tableData.length - 1];
+            const termMarginDec = (lastData.margin || 1) / 100;
+            const safeMarginDec = Math.max(termMarginDec, 0.01);
+
+            // Base PS from Terminal Theme
+            let finalPS = termTheme.ps * finalPremium * scenarioAdj;
+            
+            // Limit Base Scenario PS to never exceed Current PS
+            if (scenario === 'base' && currentInputPS > 0) {
+                finalPS = Math.min(finalPS, currentInputPS);
+            }
+            
+            finalPS = clamp(finalPS, 0.5, 50);
+            
+            let finalPE = finalPS / safeMarginDec;
+            
+            // Safety caps
+            let maxPE = 80;
+            if (scenario === 'base') maxPE = 30;       
+            if (scenario === 'pessimistic') maxPE = 20; 
+            if (scenario === 'monte_carlo') {
+                const baseThemePE = termTheme.pe || 25;
+                maxPE = Math.min(60, baseThemePE * 1.5);
+            }
+            
+            if (finalPE > maxPE) {
+                finalPE = maxPE;
+                finalPS = finalPE * safeMarginDec;
+            }
+            
+            finalPS = Math.max(finalPS, 0.5);
+            finalPE = Math.max(finalPE, 5);
+
+            if (overrides.finalPE !== undefined) {
+                finalPE = overrides.finalPE;
+                finalPS = finalPE * safeMarginDec; 
+            }
+
+            // Exit Price
+            const exitPricePE = lastData.eps * finalPE;
+            const exitPricePS = lastData.rps * finalPS;
+            const exitPrice = (exitPricePE + exitPricePS) / 2;
+            const exitDiff = (exitPrice > 0) ? (exitPricePS - exitPricePE) / exitPrice : 0;
+
+            if (lastData.eps > 0) {
+                irrStream[irrStream.length - 1] += exitPrice;
+                tableData.push({
+                    year: N,
+                    phase: 'EXIT',
+                    rps: lastData.rps,
+                    margin: lastData.margin,
+                    eps: lastData.eps,
+                    flow: exitPrice,
+                    payout: null,
+                    isExit: true,
+                    finalPE: finalPE,
+                    finalPS: finalPS,
+                    exitDiff: exitDiff
+                });
+            }
+
+            const pvExit = exitPrice / df;
+            const fv = pvDiv + pvExit;
+            // Move IRR calc here to be available for relay
+            const irr = calculateIRR(irrStream);
+
+            // --- BUYER'S RELAY (RECURSIVE VALUATION) ---
+            let relay = [];
+            
+            if (scenario !== 'monte_carlo') {
+                
+                // PRE-CALCULATE PE TRAJECTORY (Convergence Model)
+                // Current PE (implied from Price and Y1 EPS guess)
+                // Target PE (finalPE)
+                // We linearly interpolate PE from Year 0 to Year N
+                
+                let startPE = currentInputPS > 0 ? (currentInputPS / safeMarginDec) : (tickerData.pe || 25);
+                // Clamp startPE to avoid division by zero or extreme values
+                startPE = clamp(startPE, 5, 200);
+
+                for (let t = 0; t <= N; t++) {
+                    
+                    // 1. Interpolate P/E
+                    const progress = t / N;
+                    // Using S-Curve for smoother transition or Linear? Linear is safer for valuation glide path.
+                    // Let's use Linear for PE convergence.
+                    const impliedPE = startPE + (finalPE - startPE) * progress;
+                    
+                    // 2. Get Fundamental Metrics at year t
+                    // tableData array has index 0 (Start) to N (Exit row at N+1? No, N is index N).
+                    // tableData[t] gives year t metrics.
+                    
+                    const row = tableData[t];
+                    const eps_t = row ? row.eps : 0;
+                    const rps_t = row ? row.rps : 0;
+                    
+                    // 3. Calculate Price
+                    // Price_t = EPS_t * PE_t
+                    let price_t = eps_t * impliedPE;
+                    
+                    // 4. Calculate Yield (YoY)
+                    // Yield = (Price_t + Div_t) / Price_{t-1} - 1
+                    let yieldYoY = null;
+                    if (t > 0 && relay.length > 0) {
+                        const prevPrice = relay[t-1].price;
+                        // Div_t is row.flow (for years 1..N-1).
+                        // Note: row.flow for N is just dividend (before exit addition).
+                        // In tableData, flow is dividend.
+                        const div_t = row.flow;
+                        
+                        if (prevPrice > 0) {
+                            yieldYoY = (price_t + div_t) / prevPrice - 1;
+                        }
+                    }
+                    
+                    // Force Price_0 to be User Input (Start Price)
+                    if (t === 0) price_t = startPrice;
+
+                    relay.push({
+                        year: t,
+                        price: price_t,
+                        pe: impliedPE,
+                        ps: (rps_t > 0) ? price_t / rps_t : 0,
+                        yieldYoY: yieldYoY
+                    });
+                }
+            }
+
+            
+            let upside = null; if (startPrice > 0 && isFinite(fv)) upside = ((fv - startPrice) / startPrice) * 100;
+            let spread = null; if (irr != null) spread = (irr - wacc) * 100;
+            
+            return { tableData, irrStream, irr, wacc, fv, pvDiv, pvExit, upside, spread, finalPE, finalPS, phaseTargets, themeLCX: METRICS[params.themeKey].lcX, inputs, relay };
+        }
+
+        // --- RENDERING ---
+        function renderSummary(result, inputs) {
+            const { irr, wacc, fv, upside, spread, finalPE, finalPS, relay } = result;
+            safeSetText('disp-years', inputs.N + ' лет');
+            const irrEl = document.getElementById('res-irr');
+            if (irr == null) {
+                irrEl.innerText = 'n/a';
+                irrEl.className = "text-5xl font-bold tracking-tight text-slate-300";
+            } else {
+                irrEl.innerText = (irr * 100).toFixed(1) + '%';
+                irrEl.className = (irr >= wacc) ? "text-5xl font-bold tracking-tight text-green-400" : "text-5xl font-bold tracking-tight text-yellow-400";
+                if (irr * 100 > 40 && inputs.startGrowth < 25) irrEl.className = "text-5xl font-bold tracking-tight text-orange-400"; 
+            }
+            const upEl = document.getElementById('res-upside');
+            upEl.innerText = upside == null ? 'n/a' : (upside > 0 ? '+' : '') + upside.toFixed(1) + '%';
+            if (upside != null && upside < 0) upEl.className = "text-xl font-bold text-red-400";
+            else upEl.className = "text-xl font-bold text-green-400";
+
+            safeSetText('res-fv', formatCurrency(fv));
+            safeSetText('res-exit-pe', isFinite(finalPE) ? finalPE.toFixed(1) + 'x' : '--x');
+            
+            const psEl = document.getElementById('res-exit-ps');
+            if(psEl) psEl.innerText = isFinite(finalPS) ? finalPS.toFixed(1) + 'x' : '--x';
+            
+            // --- RENDER RELAY TABLE ---
+            const relayBody = document.getElementById('relay-table-body');
+            if (relayBody && relay && relay.length > 0) {
+                relayBody.innerHTML = '';
+                relay.forEach(r => {
+                    const row = document.createElement('tr');
+                    const peTxt = r.pe > 0 ? r.pe.toFixed(1) + 'x' : '-';
+                    const psTxt = r.ps > 0 ? r.ps.toFixed(1) + 'x' : '-';
+                    const yieldTxt = r.yieldYoY !== null ? (r.yieldYoY * 100).toFixed(1) + '%' : '-';
+                    
+                    // Simple color for yield
+                    let yieldClass = "text-slate-500";
+                    if (r.yieldYoY !== null) {
+                        if (r.yieldYoY > 0.15) yieldClass = "text-green-600 font-bold";
+                        else if (r.yieldYoY < 0) yieldClass = "text-red-500 font-bold";
+                    }
+
+                    row.innerHTML = `
+                        <td class="py-1 px-2 border-b border-indigo-50 font-medium text-indigo-900">Y${r.year}</td>
+                        <td class="py-1 text-right border-b border-indigo-50 font-bold text-indigo-700">${formatCurrency(r.price)}</td>
+                        <td class="py-1 text-right border-b border-indigo-50 text-slate-500 font-mono">${peTxt}</td>
+                        <td class="py-1 text-right border-b border-indigo-50 text-slate-500 font-mono">${psTxt}</td>
+                        <td class="py-1 text-right pr-2 border-b border-indigo-50 font-mono ${yieldClass}">${yieldTxt}</td>
+                    `;
+                    relayBody.appendChild(row);
+                });
+            } else if (relayBody) {
+                relayBody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-slate-400">Нет данных для сценария Monte Carlo</td></tr>';
+            }
+            
+            // --- NEW REVERSE DCF DISPLAY ---
+            const userTheme = document.getElementById('theme-selector').value;
+            const scenario = state.scenario;
+            if (scenario !== 'monte_carlo') {
+                const impliedG = calculateImpliedGrowth(inputs, userTheme, scenario);
+                const impliedW = calculateImpliedWACC(inputs, userTheme, scenario);
+                const growthDiff = impliedG - inputs.startGrowth;
+
+                safeSetText('rev-growth', impliedG.toFixed(1) + '%');
+                safeSetText('rev-wacc', (impliedW * 100).toFixed(1) + '%');
+                safeSetText('rev-user-g', inputs.startGrowth.toFixed(1) + '%');
+                safeSetText('rev-user-wacc', (inputs.wacc * 100).toFixed(1) + '%');
+                
+                const verdictEl = document.getElementById('rev-verdict');
+                if (growthDiff > 5) {
+                    verdictEl.innerText = "Рынок перегрет";
+                    verdictEl.className = "text-sm font-bold text-red-400";
+                } else if (growthDiff < -2) {
+                    verdictEl.innerText = "Маржа безопасности";
+                    verdictEl.className = "text-sm font-bold text-green-400";
+                } else {
+                    verdictEl.innerText = "Справедливая оценка";
+                    verdictEl.className = "text-sm font-bold text-yellow-400";
+                }
+            }
+        }
+
+        function renderSensitivity(baseResult, baseInputs, theme, scenario) {
+            const gridEl = document.getElementById('sens-grid');
+            const mcStatsEl = document.getElementById('mc-stats');
+            const sensTitle = document.getElementById('sens-title');
+            const sensSubtitle = document.getElementById('sens-subtitle');
+            
+            const renderScenarioLabel = (label, upside) => {
+                const el = document.getElementById(`up-${label}`);
+                if (!el) return;
+                
+                if (label === 'monte_carlo') {
+                    // Monte Carlo upside calculated below
+                    return;
+                }
+                
+                const sign = upside > 0 ? '+' : '';
+                el.innerText = `${sign}${upside.toFixed(1)}%`;
+                
+                if (upside > 0) el.className = "text-[10px] text-center mt-1 font-bold text-green-500";
+                else el.className = "text-[10px] text-center mt-1 font-bold text-red-400";
+            };
+
+            // Calculate upsides for buttons
+            ['pessimistic', 'base', 'optimistic'].forEach(s => {
+                const res = runDCFModel(baseInputs, theme, s);
+                const up = baseInputs.startPrice > 0 ? ((res.fv - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                renderScenarioLabel(s, up);
+            });
+
+
+            // --- MONTE CARLO MODE ---
+            if (scenario === 'monte_carlo') {
+                gridEl.classList.add('hidden');
+                mcStatsEl.classList.remove('hidden');
+                mcStatsEl.classList.add('grid');
+                sensTitle.innerText = "Анализ Рисков (Monte Carlo)";
+                sensSubtitle.innerText = "Распределение справедливой цены (1000 симуляций)";
+                
+                const sims = 1000;
+                const results = [];
+                for(let i=0; i<sims; i++) {
+                    const simInputs = { ...baseInputs };
+                    simInputs.startGrowth = randomNormal(baseInputs.startGrowth, 2.0); 
+                    simInputs.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5); 
+                    simInputs.wacc = randomNormal(baseInputs.wacc, 0.005); 
+                    
+                    const res = runDCFModel(simInputs, theme, 'monte_carlo'); 
+                    if(isFinite(res.fv)) results.push(res.fv);
+                }
+                
+                results.sort((a,b) => a-b);
+                const p10 = results[Math.floor(sims * 0.1)];
+                const p50 = results[Math.floor(sims * 0.5)];
+                const p90 = results[Math.floor(sims * 0.9)];
+                
+                // Add percentages
+                const upP10 = baseInputs.startPrice > 0 ? ((p10 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                const upP50 = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                const upP90 = baseInputs.startPrice > 0 ? ((p90 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                
+                const formatUp = (val) => {
+                    const sign = val > 0 ? '+' : '';
+                    return `${sign}${val.toFixed(1)}%`;
+                };
+
+                const updateMCLabel = (idPrice, idUp, val, upVal) => {
+                    safeSetText(idPrice, formatCurrency(val));
+                    const upEl = document.getElementById(idUp);
+                    if (upEl) {
+                         upEl.innerText = formatUp(upVal);
+                         upEl.className = upVal >= 0 ? "text-[10px] font-bold text-green-600" : "text-[10px] font-bold text-red-500";
+                    }
+                }
+
+                updateMCLabel('mc-p10', 'mc-p10-up', p10, upP10);
+                updateMCLabel('mc-p50', 'mc-p50-up', p50, upP50);
+                updateMCLabel('mc-p90', 'mc-p90-up', p90, upP90);
+
+                const mcLabel = document.getElementById('up-monte_carlo');
+                if (mcLabel) {
+                    mcLabel.innerText = formatUp(upP50);
+                    if (upP50 > 0) mcLabel.className = "text-[10px] text-center mt-1 font-bold text-green-500";
+                    else mcLabel.className = "text-[10px] text-center mt-1 font-bold text-red-400";
+                }
+                
+                return;
+            } else {
+                const sims = 100; 
+                const results = [];
+                for(let i=0; i<sims; i++) {
+                    const simInputs = { ...baseInputs };
+                    simInputs.startGrowth = randomNormal(baseInputs.startGrowth, 2.0); 
+                    simInputs.forecastMargin = randomNormal(baseInputs.forecastMargin, 1.5); 
+                    simInputs.wacc = randomNormal(baseInputs.wacc, 0.005); 
+                    const res = runDCFModel(simInputs, theme, 'monte_carlo'); 
+                    if(isFinite(res.fv)) results.push(res.fv);
+                }
+                results.sort((a,b) => a-b);
+                const p50 = results[Math.floor(sims * 0.5)];
+                const p50Upside = baseInputs.startPrice > 0 ? ((p50 - baseInputs.startPrice) / baseInputs.startPrice) * 100 : 0;
+                const mcLabel = document.getElementById('up-monte_carlo');
+                if (mcLabel) {
+                    const sign = p50Upside > 0 ? '+' : '';
+                    mcLabel.innerText = `${sign}${p50Upside.toFixed(1)}%`;
+                    if (p50Upside > 0) mcLabel.className = "text-[10px] text-center mt-1 font-bold text-green-500";
+                    else mcLabel.className = "text-[10px] text-center mt-1 font-bold text-red-400";
+                }
+            }
+
+            // --- STANDARD SENSITIVITY GRID ---
+            gridEl.classList.remove('hidden');
+            mcStatsEl.classList.add('hidden');
+            mcStatsEl.classList.remove('grid');
+            sensTitle.innerText = "Матрица Справедливой Цены (PV Today)";
+            sensSubtitle.innerText = "Влияние ставки (r) и мультипликатора (P/E)";
+
+            if (!gridEl) return;
+            gridEl.innerHTML = '';
+            const waccStep = 0.01, peStep = 1.0;
+            const currentPE = baseResult.finalPE, currentWACC = baseResult.wacc;
+            const peLabels = [
+                { label: 'r \\ PE', class: 'text-slate-500' },
+                { label: '-1.0x', val: currentPE - peStep },
+                { label: 'Base',  val: currentPE },
+                { label: '+1.0x', val: currentPE + peStep }
+            ];
+            peLabels.forEach((h, i) => {
+                const div = document.createElement('div');
+                div.className = "text-[10px] font-bold pb-1 " + (i===0 ? h.class : (i===2 ? "text-blue-600" : "text-slate-500"));
+                div.innerText = h.label;
+                gridEl.appendChild(div);
+            });
+            const waccRows = [ { label: '+1.0%', val: currentWACC + waccStep }, { label: 'Base', val: currentWACC }, { label: '-1.0%', val: currentWACC - waccStep } ];
+            waccRows.forEach(row => {
+                const rowHeader = document.createElement('div');
+                rowHeader.className = "text-[10px] font-bold my-auto text-left pl-1 " + (row.label==='Base' ? "text-blue-600" : "text-slate-500");
+                rowHeader.innerText = row.label;
+                gridEl.appendChild(rowHeader);
+                peLabels.slice(1).forEach(col => {
+                    const simInputs = { ...baseInputs, wacc: row.val };
+                    const simResult = runDCFModel(simInputs, theme, scenario, { finalPE: col.val });
+                    const cell = document.createElement('div');
+                    
+                    // Calculate Upside
+                    const price = baseInputs.startPrice;
+                    const fv = simResult.fv;
+                    const upside = price > 0 ? ((fv - price) / price) * 100 : 0;
+                    const sign = upside > 0 ? '+' : '';
+                    
+                    const isBase = (row.label === 'Base' && col.label === 'Base');
+                    let bgClass = "bg-slate-50";
+                    let textClass = "text-slate-600";
+                    
+                    if (isBase) {
+                        bgClass = "bg-blue-600 shadow-lg z-10 ring-2 ring-blue-300";
+                        textClass = "text-white";
+                    } else {
+                        if (upside > 5) { bgClass = "bg-green-100"; textClass = "text-green-800"; }
+                        else if (upside < -5) { bgClass = "bg-red-50"; textClass = "text-red-800"; }
+                    }
+
+                    cell.className = `p-1 rounded-sm cursor-default flex flex-col items-center justify-center ${bgClass} ${textClass} text-[10px] leading-tight`;
+                    
+                    cell.innerHTML = `
+                        <div class="font-bold">$${fv.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
+                        <div class="text-[9px] opacity-80">${sign}${upside.toFixed(0)}%</div>
+                    `;
+                    
+                    gridEl.appendChild(cell);
+                });
+            });
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                if (row.isExit) {
+                    tr.className = "bg-indigo-100 font-bold border-t-2 border-indigo-200";
+                    // UPDATED: Dual formula display
+                    tr.innerHTML = `
+                        <td class="px-4 py-2 font-medium text-indigo-900">${row.year}</td>
+                        <td class="px-4 py-2 text-xs font-bold text-indigo-700">ПРОДАЖА</td>
+                        <td class="px-4 py-2 text-right">
+                            <div class="text-[10px] text-slate-500">RPS x P/S</div>
+                            <div class="font-mono text-indigo-800">${formatCurrency(row.rps)} x ${row.finalPS.toFixed(1)}x</div>
+                        </td>
+                         <td class="px-4 py-2 text-right">
+                            <div class="text-[10px] text-slate-500">EPS x P/E</div>
+                            <div class="font-mono text-indigo-800">${formatCurrency(row.eps)} x ${row.finalPE.toFixed(1)}x</div>
+                        </td>
+                        <td class="px-4 py-2 text-right text-indigo-400" colspan="2">=</td>
+                        <td class="px-4 py-2 text-right font-bold text-indigo-700 text-lg">${formatCurrency(row.flow)}</td>
+                    `;
+                } else {
+                    if (row.phase === 'Analyst' || row.phase === 'Start') tr.className = "bg-amber-50 border-l-4 border-amber-300";
+                    else tr.className = "hover:bg-slate-50 border-l-4 border-indigo-300";
+                    
+                    const usd = n => formatCurrency(n);
+                    const pct = n => formatPercent(n);
+                    const payoutTxt = row.year === 0 ? '-' : (row.payout != null ? row.payout.toFixed(0) + '%' : '-');
+
+                    tr.innerHTML = `
+                        <td class="px-4 py-2 font-medium text-slate-900">${row.year}</td>
+                        <td class="px-4 py-2 text-xs font-bold text-slate-500">${row.phase}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.rps)}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : pct(row.margin)}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">${row.year===0 ? '-' : usd(row.eps)}</td>
+                        <td class="px-4 py-2 text-right text-purple-600 font-mono">${payoutTxt}</td>
+                        <td class="px-4 py-2 text-right ${row.flow<0?'text-red-600':'text-blue-600'}">${usd(row.flow)}</td>
+                    `;
+                }
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderLifecycleVisuals(result, themeKey, scenario) {
+            // 1. Table
+            const t = result.phaseTargets;
+            const tbody = document.getElementById('lifecycle-table-body');
+            tbody.innerHTML = `
+                <tr class="border-b border-slate-50">
+                    <td class="py-2 pl-2 text-slate-600">CAGR Рост</td>
+                    <td class="py-2 text-right text-slate-500">${t.current.g.toFixed(1)}%</td>
+                    <td class="py-2 text-right text-blue-600 font-bold bg-blue-50/50 rounded">${t.mid.g.toFixed(1)}%</td>
+                    <td class="py-2 text-right text-slate-400">${t.term.g.toFixed(1)}%</td>
+                </tr>
+                <tr class="border-b border-slate-50">
+                    <td class="py-2 pl-2 text-slate-600">Маржа</td>
+                    <td class="py-2 text-right text-slate-500">${t.current.m.toFixed(1)}%</td>
+                    <td class="py-2 text-right text-blue-600 font-bold bg-blue-50/50 rounded">${t.mid.m.toFixed(1)}%</td>
+                    <td class="py-2 text-right text-slate-400">${t.term.m.toFixed(1)}%</td>
+                </tr>
+                <tr>
+                    <td class="py-2 pl-2 text-slate-600">Payout</td>
+                    <td class="py-2 text-right text-slate-500">${t.current.p.toFixed(0)}%</td>
+                    <td class="py-2 text-right text-blue-600 font-bold bg-blue-50/50 rounded">${t.mid.p.toFixed(0)}%</td>
+                    <td class="py-2 text-right text-slate-400">${t.term.p.toFixed(0)}%</td>
+                </tr>
+            `;
+
+            // 2. Chart
+            if (!state.charts.lc) return;
+            const chart = state.charts.lc;
+            
+            const baseX = METRICS[themeKey].lcX; 
+            
+            const pX = Math.min(100, baseX + 15);
+            const oX = Math.max(0, baseX - 15);
+            
+            const bell = (x) => 100 * Math.exp(-Math.pow(x - 40, 2) / (2 * Math.pow(25, 2))); 
+            
+            // Fixed reference points for ETFs
+            const etfData = [
+                { x: METRICS['IndexTech'].lcX, y: bell(METRICS['IndexTech'].lcX), label: 'QQQ' },
+                { x: METRICS['Steady'].lcX, y: bell(METRICS['Steady'].lcX), label: 'SPY' },
+                { x: METRICS['IndexValue'].lcX, y: bell(METRICS['IndexValue'].lcX), label: 'DIA' }
+            ];
+
+            // Background theme markers
+            const themeData = THEME_ORDER.map(k => ({
+                x: METRICS[k].lcX,
+                y: bell(METRICS[k].lcX)
+            }));
+            
+            // Update Datasets
+            // 0: Curve, 1: All Themes (Gray), 2: ETFs (Square), 3: Target Company (Big Circle)
+            
+            chart.data.datasets[1].data = themeData; 
+            chart.data.datasets[2].data = etfData;
+            
+            // Target Company Position based on Scenario
+            let activeX = baseX;
+            let color = '#3b82f6'; // Base Blue
+            if (scenario === 'optimistic') { activeX = oX; color = '#22c55e'; }
+            if (scenario === 'pessimistic') { activeX = pX; color = '#ef4444'; }
+            
+            chart.data.datasets[3].data = [{x: activeX, y: bell(activeX)}]; 
+            chart.data.datasets[3].backgroundColor = color;
+            
+            chart.update();
+        }
+
+        // --- CHARTS ---
+        function initChart() {
+            // Lifecycle Chart Only
+            const ctxLc = document.getElementById('lifecycleChart');
+            if (ctxLc) {
+                const curveData = [];
+                for(let i=0; i<=100; i+=2) {
+                    const y = 100 * Math.exp(-Math.pow(i - 40, 2) / (2 * Math.pow(25, 2)));
+                    curveData.push({x: i, y: y});
+                }
+
+                state.charts.lc = new Chart(ctxLc.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            {
+                                label: 'Lifecycle',
+                                data: curveData,
+                                borderColor: '#cbd5e1',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: true,
+                                backgroundColor: 'rgba(241, 245, 249, 0.5)',
+                                tension: 0.4
+                            },
+                            { 
+                                label: 'Themes', 
+                                data: [], 
+                                backgroundColor: '#94a3b8', 
+                                pointRadius: 3, 
+                                type: 'scatter' 
+                            },
+                            { 
+                                label: 'ETFs', 
+                                data: [], 
+                                backgroundColor: '#6366f1', 
+                                pointRadius: 6, 
+                                pointStyle: 'rectRot',
+                                type: 'scatter' 
+                            }, 
+                            { 
+                                label: 'Company', 
+                                data: [], 
+                                backgroundColor: '#3b82f6', 
+                                pointRadius: 10, 
+                                type: 'scatter' 
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { 
+                                enabled: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        // Custom logic to show ETF names if available in raw data
+                                        const raw = context.raw;
+                                        if (raw.label) return raw.label;
+                                        return context.dataset.label;
+                                    }
+                                }
+                            } 
+                        },
+                        scales: {
+                            x: { type: 'linear', display: true, min: 0, max: 100, title: {display: true, text: 'Стадии: Старт -> Рост -> Зрелость -> Спад'} },
+                            y: { display: false, min: 0, max: 110 }
+                        }
+                    }
+                });
+            }
+        }
+
+        // --- MAIN ---
+        function readInputsFromDOM() {
+            const getVal = (id) => parseFloat(document.getElementById(id).value);
+            const waccInput = getVal('inp-wacc'); 
+            return {
+                startPrice: getVal('inp-price') || 0,
+                startRPS: getVal('inp-rps') || 0,
+                startGrowth: getVal('inp-growth') || 0,
+                forecastMargin: getVal('inp-forecast-margin') || 0,
+                // Check isNaN so 0 is allowed
+                wacc: (isNaN(waccInput) ? 8 : waccInput)/100,
+                startPayout: getVal('inp-payout') || 0,
+                N: parseInt(document.getElementById('slider-years').value) || 15
+            };
+        }
+
+        function calculate() {
+            const userTheme = document.getElementById('theme-selector').value;
+            const inputs = readInputsFromDOM();
+            
+            // Read manual override for Exit PE
+            const manualPEInput = document.getElementById('inp-exit-pe');
+            const manualMarginInput = document.getElementById('inp-term-margin');
+            
+            let overrides = {};
+            
+            // Handle PE Manual
+            if (manualPEInput) {
+                const val = parseFloat(manualPEInput.value);
+                if (!isNaN(val) && val > 0) {
+                    overrides.finalPE = val;
+                }
+            }
+            
+            // Handle Margin Manual
+            if (manualMarginInput) {
+                const val = parseFloat(manualMarginInput.value);
+                if (!isNaN(val)) {
+                    overrides.termMargin = val;
+                }
+            }
+            
+            const result = runDCFModel(inputs, userTheme, state.scenario, overrides);
+            renderSummary(result, inputs);
+            renderTable(result.tableData);
+            renderSensitivity(result, inputs, userTheme, state.scenario);
+            
+            renderLifecycleVisuals(result, userTheme, state.scenario);
+            
+            // Update placeholders with auto-calculated values IF manual input is empty
+            if (manualPEInput && !overrides.finalPE && result.finalPE) {
+                manualPEInput.placeholder = result.finalPE.toFixed(1);
+            }
+            if (manualMarginInput && !overrides.termMargin) {
+                // Get auto-calculated margin from phaseTargets
+                const autoMargin = result.phaseTargets.term.m;
+                manualMarginInput.placeholder = autoMargin.toFixed(1);
+            }
+        }
+
+        function setScenario(s) {
+            const themeKey = document.getElementById('theme-selector').value;
+            state.scenario = s;
+            ['pessimistic', 'base', 'optimistic', 'monte_carlo'].forEach(id => {
+                const btn = document.getElementById('btn-' + id);
+                if (!btn) return;
+                const isAct = (id === s);
+                // Reset classes
+                btn.className = "flex-1 py-3 text-xs border rounded-lg transition-all font-medium text-slate-600 hover:bg-slate-50"; 
+                
+                if (isAct) {
+                     if (id === 'pessimistic') btn.className = "flex-1 py-3 text-xs bg-red-100 text-red-800 border-red-300 rounded-lg shadow-inner font-bold border";
+                     else if (id === 'optimistic') btn.className = "flex-1 py-3 text-xs bg-green-100 text-green-800 border-green-300 rounded-lg shadow-inner font-bold border";
+                     else if (id === 'monte_carlo') btn.className = "flex-1 py-3 text-xs bg-purple-600 text-white rounded-lg shadow-inner font-bold border transition-all hover:bg-purple-700";
+                     else btn.className = "flex-1 py-3 text-xs bg-blue-600 text-white rounded-lg shadow-md font-bold";
+                } else {
+                     if (id === 'monte_carlo') btn.className = "flex-1 py-3 text-xs text-purple-600 border-purple-200 border rounded-lg hover:bg-purple-50 transition-all font-medium";
+                }
+            });
+            const params = getCalcParams(themeKey, s);
+            const slider = document.getElementById('slider-years');
+            const valInput = document.getElementById('val-years');
+            
+            // Logic to update slider if it wasn't manually set by user
+            if (slider && !state.userSetYears) {
+                const baseN = METRICS[params.themeKey].N || 12;
+                const newN = getScenarioHorizon(baseN, s);
+                slider.value = newN;
+                if(valInput) valInput.value = newN;
+            }
+            
+            // Clear manual PE on scenario change if desired, or keep it sticky. 
+            // Standard practice: if user typed it, keep it. If not, auto-update via calculate()'s placeholder logic.
+            // Current implementation: input value persists if typed.
+            
+            calculate();
+        }
+
+        // --- INIT ---
+        window.addEventListener('load', () => {
+            initChart();
+            // Sync slider and number input
+            const slider = document.getElementById('slider-years');
+            const valInput = document.getElementById('val-years');
+            const peInput = document.getElementById('inp-exit-pe');
+            const marginInput = document.getElementById('inp-term-margin');
+            
+            if(slider && valInput) {
+                slider.addEventListener('input', () => {
+                    valInput.value = slider.value;
+                    state.userSetYears = true;
+                    calculate();
+                });
+                valInput.addEventListener('input', () => {
+                    let val = parseInt(valInput.value);
+                    if(val < 3) val = 3; // Fixed min
+                    if(val > 35) val = 35;
+                    slider.value = val;
+                    state.userSetYears = true;
+                    calculate();
+                });
+            }
+            
+            // Add listener to reset manual PE override if user clears input
+            if (peInput) {
+                peInput.addEventListener('input', () => {
+                    calculate();
+                });
+            }
+            // Add listener for margin manual override
+            if (marginInput) {
+                marginInput.addEventListener('input', () => {
+                    calculate();
+                });
+            }
+
+            setScenario('base');
         });
-        valInput.addEventListener('input', () => {
-          let v = parseInt(valInput.value);
-          if (v < 3) v = 3;
-          if (v > 35) v = 35;
-          slider.value = v;
-          state.userSetYears = true;
-          calculate();
+
+        // Listeners
+        document.getElementById('inp-ticker').addEventListener('keypress', (e) => { if(e.key==='Enter') loadTicker(); });
+        document.getElementById('theme-selector').addEventListener('change', () => {
+            // Reset manual overrides when theme changes significantly? 
+            // Or keep them? Usually a new theme implies new defaults.
+            // Let's reset the "User Set Years" flag to allow the new theme's default N to apply
+            state.userSetYears = false;
+            // Clear manual inputs
+            document.getElementById('inp-exit-pe').value = '';
+            document.getElementById('inp-term-margin').value = '';
+            
+            setScenario(state.scenario || 'base');
         });
-      }
-
-      // Auto DR checkbox
-      const chk = document.getElementById('chk-auto-dr');
-      if (chk){
-        chk.addEventListener('change', () => {
-          state.autoDR = chk.checked;
-          if (state.autoDR){
-            applyAutoDRForTicker(state.currentTicker || 'SPY');
-          }
-          calculate();
+        
+        ['inp-price', 'inp-rps', 'inp-growth', 'inp-forecast-margin', 'inp-wacc', 'inp-payout'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.addEventListener('input', calculate);
         });
-      }
-
-      // Manual DR input: if user edits -> auto off
-      const inpDR = document.getElementById('inp-dr');
-      if (inpDR){
-        inpDR.addEventListener('input', () => {
-          if (state._suppressAutoToggle) return;
-          if (state.autoDR){
-            state.autoDR = false;
-            const chk = document.getElementById('chk-auto-dr');
-            if (chk) chk.checked = false;
-          }
-          updateDRFormulaUI(state.currentTicker || 'SPY');
-          calculate();
-        });
-      }
-
-      // ERP mode change
-      const selMode = document.getElementById('sel-erp-mode');
-      if (selMode){
-        selMode.addEventListener('change', () => {
-          state.erpMode = selMode.value;
-          if (state.autoDR) applyAutoDRForTicker(state.currentTicker || 'SPY');
-          updateDRFormulaUI(state.currentTicker || 'SPY');
-          calculate();
-        });
-      }
-
-      // Manual ERP input
-      const inpERP = document.getElementById('inp-erp-manual');
-      if (inpERP){
-        inpERP.addEventListener('input', () => {
-          const v = parseFloat(inpERP.value);
-          if (!isNaN(v)){
-            state.manualERP = v/100;
-            // auto-switch to manual mode when user edits ERP
-            const sel = document.getElementById('sel-erp-mode');
-            if (sel) sel.value = 'manual';
-            state.erpMode = 'manual';
-          }
-          if (state.autoDR) applyAutoDRForTicker(state.currentTicker || 'SPY');
-          updateDRFormulaUI(state.currentTicker || 'SPY');
-          calculate();
-        });
-      }
-
-      // Theme change
-      document.getElementById('theme-selector').addEventListener('change', () => {
-        state.userSetYears = false;
-        document.getElementById('inp-exit-pe').value = '';
-        document.getElementById('inp-term-margin').value = '';
-        setScenario(state.scenario || 'base');
-      });
-
-      // Basic inputs recalc
-      ['inp-price','inp-rps','inp-growth','inp-forecast-margin','inp-payout','inp-exit-pe','inp-term-margin'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', calculate);
-      });
-
-      // Enter on ticker
-      document.getElementById('inp-ticker').addEventListener('keypress', (e) => { if (e.key === 'Enter') loadTicker(); });
-
-      // Start
-      // Load SPY by default
-      document.getElementById('inp-ticker').value = 'SPY';
-      loadTicker();
-    });
-  </script>
+    </script>
 </body>
 </html>
